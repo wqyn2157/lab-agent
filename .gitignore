@@ -1,0 +1,34 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+
+# Python dependencies and generated files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Frontend dependencies and build output
+node_modules/
+dist/
+dist-ssr/
+coverage/
+*.tsbuildinfo
+*.timestamp-*-*.mjs
+
+# Generated vector index and local uploads
+/backend/data/chroma/
+/backend/uploads/
+
+# Logs and local editor settings
+logs/
+*.log
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
