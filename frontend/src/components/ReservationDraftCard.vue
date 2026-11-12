@@ -1,8 +1,14 @@
 <template>
-  <el-card class="reservation-draft" shadow="never">
+  <el-card
+    class="reservation-draft"
+    :class="{ 'is-confirmed': confirmed, 'is-cancelled': cancelled }"
+    shadow="never"
+  >
     <template #header>
       <div class="draft-heading">
-        <strong>预约确认单</strong>
+        <div class="draft-title">
+          <span class="draft-symbol" aria-hidden="true">约</span><strong>预约确认单</strong>
+        </div>
         <el-tag :type="confirmed ? 'success' : canConfirm ? 'warning' : 'info'">
           {{ statusLabel }}
         </el-tag>
@@ -53,21 +59,23 @@
       <p v-if="expired && !uncertain && !cancelUncertain" class="draft-expiry">
         确认单已过期，请重新生成。
       </p>
-      <el-button
-        type="primary"
-        :loading="submitting"
-        :disabled="!canConfirm || submitting || cancelling"
-        @click="handleConfirm"
-      >
-        {{ uncertain ? '重试确认' : '确认预约' }}
-      </el-button>
-      <el-button
-        :loading="cancelling"
-        :disabled="!canCancel || submitting || cancelling"
-        @click="handleCancel"
-      >
-        {{ cancelUncertain ? '重试取消' : '取消' }}
-      </el-button>
+      <div class="draft-actions">
+        <el-button
+          type="primary"
+          :loading="submitting"
+          :disabled="!canConfirm || submitting || cancelling"
+          @click="handleConfirm"
+        >
+          {{ uncertain ? '重试确认' : '确认预约' }}
+        </el-button>
+        <el-button
+          :loading="cancelling"
+          :disabled="!canCancel || submitting || cancelling"
+          @click="handleCancel"
+        >
+          {{ cancelUncertain ? '重试取消' : '取消' }}
+        </el-button>
+      </div>
     </template>
   </el-card>
 </template>
@@ -226,8 +234,71 @@ const handleCancel = async () => {
 
 <style scoped>
 .reservation-draft {
-  margin-top: 12px;
-  max-width: 360px;
+  margin-top: 15px;
+  width: 360px;
+  max-width: 100%;
+  --el-card-border-color: #dce5fb;
+  --el-card-border-radius: 12px;
+  background: linear-gradient(150deg, #f7f9ff, #fff 65%);
+}
+.reservation-draft :deep(.el-card__header) {
+  padding: 14px 17px;
+  border-bottom-color: #e9eef9;
+}
+.reservation-draft :deep(.el-card__body) {
+  padding: 17px;
+}
+.reservation-draft.is-confirmed {
+  --el-card-border-color: #d9ece5;
+  background: #fbfefc;
+}
+.reservation-draft.is-cancelled {
+  --el-card-border-color: #e6eaf2;
+  background: #fcfdff;
+}
+.draft-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.draft-title strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: #536989;
+}
+.draft-symbol {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  color: #6c89dc;
+  background: #eaf0ff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.draft-actions {
+  display: flex;
+  gap: 9px;
+  margin-top: 13px;
+}
+.draft-actions .el-button {
+  flex: 1;
+  margin: 0;
+  height: 34px;
+  font-size: 12px;
+}
+.draft-heading :deep(.el-tag) {
+  font-size: 10px;
+  border-radius: 5px;
+}
+.reservation-draft :deep(.el-alert) {
+  margin-top: 14px;
+  border-radius: 8px;
+}
+.reservation-draft :deep(.el-alert__title) {
+  font-size: 11px;
+  line-height: 1.8;
 }
 .draft-heading {
   display: flex;
@@ -237,20 +308,23 @@ const handleCancel = async () => {
 }
 .draft-details {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  gap: 6px 12px;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 8px 12px;
   margin: 0;
+  font-size: 12px;
 }
 .draft-details dt,
 .draft-expiry {
-  color: #909399;
+  color: #9ba7ba;
 }
 .draft-details dd {
   margin: 0;
+  color: #5c6c86;
   overflow-wrap: anywhere;
 }
 .draft-expiry {
-  font-size: 12px;
+  margin-top: 14px;
+  font-size: 10px;
 }
 .draft-error {
   margin-bottom: 12px;

@@ -1,21 +1,37 @@
 * {
-    box-sizing: border-box;
+  box-sizing: border-box;
 }
 
 html,
 body,
 #app {
-    width: 100%;
-    min-height: 100%;
-    margin: 0;
-    padding: 0;
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --el-color-primary: #4166e8;
+  --el-color-primary-light-3: #7a94ef;
+  --el-color-primary-light-5: #a0b3f4;
+  --el-color-primary-light-7: #c6d1f8;
+  --el-color-primary-light-8: #d9e1fb;
+  --el-color-primary-light-9: #edf2ff;
+  --el-color-primary-dark-2: #3452ba;
+  --el-border-radius-base: 8px;
+  --el-text-color-primary: #26344c;
+  --el-text-color-regular: #657189;
+  --el-border-color-light: #e8edf5;
 }
 
 body {
-    font-family: "Microsoft YaHei", sans-serif;
-    font-size: 14px;
-    color: #303133;
-    background-color: #f5f7fa;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  color: #26344c;
+  background-color: #f5f7fb;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* 清除标题默认边距 */
@@ -26,28 +42,36 @@ h4,
 h5,
 h6,
 p {
-    margin: 0;
+  margin: 0;
 }
 
 /* 清除列表默认样式 */
 ul,
 ol {
-    margin: 0;
-    padding: 0;
-    list-style: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 /* 链接 */
 a {
-    color: inherit;
-    text-decoration: none;
+  color: inherit;
+  text-decoration: none;
 }
 
 /* 图片 */
 img {
-    max-width: 100%;
+  max-width: 100%;
 }
 
-.el-tooltip__trigger {
-    outline: none !important;
+.el-card {
+  --el-card-border-color: #e5eaf2;
+  --el-card-border-radius: 14px;
+}
+
+button:focus-visible,
+a:focus-visible,
+.el-tooltip__trigger:focus-visible {
+  outline: 2px solid #4166e8;
+  outline-offset: 3px;
 }
