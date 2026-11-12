@@ -50,10 +50,17 @@
               <div v-for="(step, i) in item.steps" :key="i">· {{ step }}</div>
             </div>
             <div v-html="parseMarkdown(item.content)"></div>
+            <ReservationDraftCard
+              v-for="draft in item.drafts || []"
+              :key="draft.draft_id"
+              :draft="draft"
+              @confirmed="handleReservationConfirmed"
+              @cancelled="handleDraftCancelled"
+            />
           </div>
         </div>
       </div>
-      
+
       <div style="margin-top: 12px; display: flex; gap: 8px; align-items: flex-end">
         <el-input
           v-model="input"
@@ -74,14 +81,14 @@ import { ref, reactive, nextTick } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify' // 过滤危险的 HTML，防止 XSS 攻击
 import { chatStreamApi } from '@/api/ai'
+import ReservationDraftCard from '@/components/ReservationDraftCard.vue'
 import { ElMessage } from 'element-plus'
-
 
 const messages = ref([
   {
     role: 'assistant',
     content:
-      '你好，我是实验室预约助手。可以问规则和开放实验室，也可以说「帮我预约明天下午的实验室」，确认后我会帮你提交。'
+      '你好，我是实验室预约助手。可以问规则和开放实验室，也可以让我生成预约确认单，核对卡片并点击「确认预约」后提交。'
   }
 ])
 const input = ref('')
@@ -95,6 +102,21 @@ const scrollToBottom = () => {
   })
 }
 
+const handleReservationConfirmed = ({ reservationId }) => {
+  messages.value.push({
+    role: 'assistant',
+    content: `预约 #${reservationId} 已提交，等待管理员审核。`
+  })
+  scrollToBottom()
+}
+
+const handleDraftCancelled = ({ draftId, status }) => {
+  messages.value.push({
+    role: 'assistant',
+    content: `待确认单 #${draftId} ${status === 'expired' ? '已过期' : '已取消'}，未创建预约。`
+  })
+  scrollToBottom()
+}
 
 const handleSend = async () => {
   const text = input.value.trim()
@@ -110,7 +132,8 @@ const handleSend = async () => {
     role: 'assistant',
     content: '', // 正文：靠 token 一点点拼
     status: '正在思考…', // 当前状态文案
-    steps: [] // 过程流水，不进下次 history
+    steps: [], // 过程流水，不进下次 history
+    drafts: []
   })
   messages.value.push(assistant)
 
@@ -135,6 +158,14 @@ const handleSend = async () => {
         assistant.steps.push(`完成：${label}`)
         if (evt.preview) {
           assistant.steps.push(`输出结果：${evt.preview}`)
+        }
+      } else if (evt.type === 'reservation_draft') {
+        const draft = evt.data
+        if (
+          draft?.ok === true &&
+          !assistant.drafts.some((item) => item.draft_id === draft.draft_id)
+        ) {
+          assistant.drafts.push(draft)
         }
       } else if (evt.type === 'token') {
         assistant.content += evt.content || '' // 打字机：追加，不是覆盖

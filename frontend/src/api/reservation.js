@@ -12,6 +12,25 @@ export function createReservationApi(data) {
 }
 
 /**
+ * 确认 AI 生成的待确认单；同一次确认重试时保持幂等键不变。
+ */
+export function confirmReservationDraftApi(draftId, data) {
+  return request({
+    url: `/api/reservation/drafts/${draftId}/confirm`,
+    method: 'post',
+    data
+  })
+}
+
+export function cancelReservationDraftApi(draftId, data) {
+  return request({
+    url: `/api/reservation/drafts/${draftId}/cancel`,
+    method: 'post',
+    data
+  })
+}
+
+/**
  * 查询预约记录
  */
 export function getReservationPageList(params) {

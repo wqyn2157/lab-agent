@@ -19,7 +19,7 @@ SYSTEM_PROMPT = """你是智能实验室预约系统的 Agent，回答要简洁�
 1. search_lab_docs：查询实验室规则、安全要求、开放时间等知识。
 2. list_open_labs：查询数据库中真实开放的实验室。
 3. list_lab_equipments：查询实验室设备信息。
-4. create_lab_reservation：在用户明确确认后，创建真实预约记录。
+4. prepare_lab_reservation：生成待确认单，等待用户在页面确认。
 5. get_today：获取当前日期，用于今天、明天、后天等日期换算。
 6. get_reservation_page_list：查询预约记录及其审核状态。
 
@@ -43,20 +43,20 @@ SYSTEM_PROMPT = """你是智能实验室预约系统的 Agent，回答要简洁�
 不要直接回答“需要确定明天的具体日期”。
 
 ## 预约创建规则
-提交预约之前，必须向用户复述：
-- 实验室 ID 和名称（或设备 ID 和名称）
-- 预约日期
-- 开始时间
-- 结束时间
-
-必须得到用户明确确认后，才能调用 create_lab_reservation。
-用户没有明确表示“确认”“确认预约”“就这样预约”等同意意图时，不得创建预约。
+用户提出预约需求且必要参数完整时，调用 prepare_lab_reservation 生成待确认单。
 
 如果缺少 lab_id，先调用 list_open_labs 查询。
-如果缺少 equipment_id，先调用 list_lab_equipments 查询。
+如果用户要预约设备但缺少 equipment_id，先调用 list_lab_equipments 查询。
 不得编造实验室 ID 或设备 ID。
 
-预约成功后的状态为“待审核”，必须经管理员审核通过后才能使用。
+工具成功只表示待确认单已生成，尚未创建真实预约。
+引导用户在页面确认卡片中核对信息并点击确认。
+用户在聊天中说“确认”，不能代替点击确认按钮。
+不得将生成待确认单描述为“预约已提交”。
+
+真正创建预约由页面确认按钮调用后端接口完成。
+真实预约提交后为“待审核”，管理员审核通过后才能使用。
+
 
 ## 其他规则
 1. 不得编造数据库中不存在的实验室、设备和预约记录。
@@ -69,7 +69,7 @@ TOOL_LABELS = {
     "search_lab_docs": "检索实验室知识库",
     "list_open_labs": "查询开放的实验室",
     "list_lab_equipments": "查询实验室设备",
-    "create_lab_reservation": "创建预约单",
+    "prepare_lab_reservation": "生成预约确认单",
     "get_today": "获取今天的日期",
     "get_reservation_page_list": "查询预约记录",
 }
@@ -144,14 +144,25 @@ async def stream_agent(db: Session, current_user: User, data: ChatRequest):
                 }
             elif kind == "on_tool_end":
                 name = event.get("name") or ""
+                output = (event.get("data") or {}).get("output")
                 yield {
                     "type": "tool_end",
                     "name": name,
                     "label": TOOL_LABELS.get(name, name),
-                    "preview": _tool_output_preview(
-                        (event.get("data") or {}).get("output")
-                    ),
+                    "preview": _tool_output_preview(output),
                 }
+
+                if name == "prepare_lab_reservation" and isinstance(
+                    output, ToolMessage
+                ):
+                    card_data = output.artifact
+
+                    if isinstance(card_data, dict) and card_data.get("ok") is True:
+                        yield {
+                            "type": "reservation_draft",
+                            "data": card_data,
+                        }
+
             elif kind == "on_chat_model_stream":
                 metadata = event.get("metadata") or {}
                 if metadata.get("langgraph_node") not in (None, "agent"):

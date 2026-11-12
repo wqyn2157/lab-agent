@@ -2,14 +2,18 @@ from datetime import datetime
 import json
 from sqlalchemy.orm import Session
 from langchain_core.tools import tool
-
+import traceback
+from app.database import SessionLocal
+from app.schemas.reservation import ReservationCreateRequest
+from app.services import reservation_draft_service
 from app.common.exceptions import BusinessException
-from app.models.reservation import Reservation
 from app.models.user import User
 from app.services import equipment_service, kb_service, lab_service, reservation_service
 
 
 def build_tools(db: Session, current_user: User):
+    current_user_id = current_user.id
+
     @tool
     def search_lab_docs(query: str) -> str:
         """根据用户的提问检索知识库"""
@@ -73,18 +77,18 @@ def build_tools(db: Session, current_user: User):
         except Exception as exc:
             return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
 
-    @tool
-    def create_lab_reservation(
+    @tool(response_format="content_and_artifact")
+    def prepare_lab_reservation(
         lab_id: int,
         date: str,
         start_time: str,
         end_time: str,
         equipment_id: int | None = None,
         remark: str | None = None,
-    ) -> str:
-        """创建预约单预约实验室或设备"""
+    ) -> tuple[str, dict | None]:
+        """生成实验室或设备的带确认单，不创建真实预约"""
         try:
-            data = Reservation(
+            data = ReservationCreateRequest(
                 lab_id=lab_id,
                 equipment_id=equipment_id,
                 date=date,
@@ -92,22 +96,61 @@ def build_tools(db: Session, current_user: User):
                 end_time=end_time,
                 remark=remark,
             )
-            reservation_service.create_reservation(db, current_user, data)
-            return json.dumps(
-                {
+
+            with SessionLocal() as tool_db:
+                user = tool_db.get(User, current_user_id)
+
+                if user is None or user.status != 1:
+                    raise BusinessException(message="当前账号不可用", code=403)
+
+                draft, confirmation_token = (
+                    reservation_draft_service.create_reservation_draft(
+                        tool_db, user, data
+                    )
+                )
+
+                summary = {
                     "ok": True,
-                    "message": "预约已提交，请等待管理员审核",
-                    "equipment_id": equipment_id,
-                    "date": date,
-                    "start_time": start_time,
-                    "end_time": end_time,
-                },
-                ensure_ascii=False,
-            )
+                    "message": "待确认单已生成，请在确认卡片中点击确认。",
+                    "draft_id": draft.id,
+                    "lab_id": draft.lab_id,
+                    "lab_name": draft.lab.name,
+                    "equipment_id": draft.equipment_id,
+                    "equipment_name": (
+                        draft.equipment.name if draft.equipment else None
+                    ),
+                    "date": draft.date,
+                    "start_time": draft.start_time,
+                    "end_time": draft.end_time,
+                    "remark": draft.remark,
+                    "status": draft.status,
+                    "expires_at": draft.expires_at.isoformat(),
+                }
+
+                card_data = {
+                    **summary,
+                    "confirmation_token": confirmation_token,
+                }
+
+                return json.dumps(summary, ensure_ascii=False), card_data
+
         except BusinessException as exc:
-            return json.dumps({"ok": False, "error": exc.message}, ensure_ascii=False)
-        except Exception as exc:
-            return json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False)
+            return (
+                json.dumps(
+                    {"ok": False, "error": exc.message},
+                    ensure_ascii=False,
+                ),
+                None,
+            )
+        except Exception:
+            traceback.print_exc()
+            return (
+                json.dumps(
+                    {"ok": False, "error": "生成确认单失败，请稍候重试"},
+                    ensure_ascii=False,
+                ),
+                None,
+            )
 
     @tool
     def get_today() -> str:
@@ -122,7 +165,12 @@ def build_tools(db: Session, current_user: User):
         """查询预约记录"""
         try:
             page = reservation_service.get_reservation_page_list(
-                db, current_user, page=1, page_size=10, status=status, user_id=user_id
+                db,
+                current_user,
+                page=1,
+                page_size=10,
+                status=status,
+                user_id=user_id,
             )
             rows = [
                 {
@@ -151,7 +199,7 @@ def build_tools(db: Session, current_user: User):
         search_lab_docs,
         list_open_labs,
         list_lab_equipments,
-        create_lab_reservation,
+        prepare_lab_reservation,
         get_today,
         get_reservation_page_list,
     ]

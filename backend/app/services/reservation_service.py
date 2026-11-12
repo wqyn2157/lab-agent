@@ -48,8 +48,13 @@ def get_reservation_page_list(
     return PageResponse(list=result, total=total)
 
 
-def create_reservation(db: Session, current_user: User, data: ReservationCreateRequest):
-    """创建预约记录"""
+def validate_reservation(
+    db: Session,
+    current_user: User,
+    data: ReservationCreateRequest,
+    lock: bool = False,
+):
+    """校验预约信息，不创建预约记录"""
     if current_user.role != "student":
         raise BusinessException(
             message="只有学生可以提交预约",
@@ -64,7 +69,14 @@ def create_reservation(db: Session, current_user: User, data: ReservationCreateR
         raise BusinessException(message="预约的结束时间不能小于开始时间")
     if data.date == current_date and data.start_time < current_time:
         raise BusinessException(message="预约的开始时间不能小于当前的时间")
-    lab = db.query(Lab).filter(Lab.id == data.lab_id).first()
+
+    lab_quary = db.query(Lab).filter(Lab.id == data.lab_id)
+
+    if lock:
+        lab_quary = lab_quary.populate_existing().with_for_update()
+
+    lab = lab_quary.first()
+
     if not lab:
         raise BusinessException(message="实验室不存在")
     if lab.status != 1:
@@ -75,9 +87,13 @@ def create_reservation(db: Session, current_user: User, data: ReservationCreateR
         raise BusinessException(message="预约时间不能晚于实验室的关闭时间")
 
     if data.equipment_id is not None:
-        equipment = (
-            db.query(Equipment).filter(Equipment.id == data.equipment_id).first()
-        )
+        equipment_quary = db.query(Equipment).filter(Equipment.id == data.equipment_id)
+
+        if lock:
+            equipment_quary = equipment_quary.populate_existing().with_for_update()
+
+        equipment = equipment_quary.first()
+
         if not equipment:
             raise BusinessException(message="实验室设备不存在")
         if equipment.lab_id != data.lab_id:
@@ -100,10 +116,21 @@ def create_reservation(db: Session, current_user: User, data: ReservationCreateR
         )  # 预约实验室设备
     else:
         query = query.filter(Reservation.equipment_id.is_(None))  # 只预约实验室
+
+    if lock:
+        query = query.with_for_update()
+
     res = query.first()
+
     if res:
         raise BusinessException(message="该时段已预约")
 
+
+def create_reservation(
+    db: Session, current_user: User, data: ReservationCreateRequest, commit: bool = True
+) -> Reservation:
+    "创建预约，由调用方法决定是否立即提交"
+    validate_reservation(db, current_user, data, lock=True)
     reservation_model = Reservation(
         user_id=current_user.id,
         lab_id=data.lab_id,
@@ -116,7 +143,12 @@ def create_reservation(db: Session, current_user: User, data: ReservationCreateR
     )
 
     db.add(reservation_model)
-    db.commit()
+    db.flush()
+
+    if commit:
+        db.commit()
+
+    return reservation_model
 
 
 def cancel_reservation(db: Session, current_user: User, reservation_id: int):
