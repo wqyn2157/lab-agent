@@ -12,6 +12,8 @@ from app.models.user import User
 from app.models.lab import Lab
 from app.models.reservation import Reservation
 from app.models.reservation_draft import ReservationDraft
+from app.models.conversation import Conversation
+from app.models.chat_message import ChatMessage
 from app.database import engine, Base
 from app.api import api
 from app.common.exceptions import (

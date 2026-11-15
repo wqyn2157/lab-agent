@@ -1,66 +1,78 @@
 import { getToken } from '@/utils/auth'
 import request from '@/utils/request'
 
-/**
- *AI对话请求
- */
-export function chatApi(data) {
-  return request({
-    url: '/api/ai/chat',
-    method: 'post',
-    data,
-    timeout: 90000
-  })
+export function getConversationsApi(params, signal) {
+  return request({ url: '/api/ai/conversations', method: 'get', params, signal })
 }
 
-export async function chatStreamApi(data,onEvent){
-  const baseUrl = import.meta.env.VITE_API_BASE_URL
-  const token = getToken()
-  console.log("baseUrl:", baseUrl)
-  console.log("token类型:", typeof token)
-  console.log("token是否为空:", !token)
-  console.log("token是否包含换行:", /[\r\n]/.test(String(token)))
-  const res = await fetch(`${baseUrl}/api/ai/chat/stream`,{
-    method:'post',
+export function getConversationMessagesApi(id, params, signal) {
+  return request({ url: `/api/ai/conversations/${id}/messages`, method: 'get', params, signal })
+}
+
+export function deleteConversationApi(id, signal) {
+  return request({ url: `/api/ai/conversations/${id}`, method: 'delete', signal })
+}
+
+export async function chatStreamApi(data, onEvent, { signal } = {}) {
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
+  const response = await fetch(`${baseUrl}/api/ai/chat/stream`, {
+    method: 'POST',
     headers: {
-    'Content-Type':'application/json',
-    Accept:'text/event-stream',
-    Authorization:`Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+      Authorization: `Bearer ${getToken()}`
     },
-    body:JSON.stringify(data)
+    body: JSON.stringify(data),
+    signal
   })
-  if (res.status === 401){
-    throw new Error('登录已失效，请重新登录')
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    const error = new Error(
+      response.status === 401 ? '登录已失效，请重新登录' : body?.message || '聊天请求失败'
+    )
+    error.status = response.status
+    throw error
+  }
+  if (!response.body || !response.headers.get('content-type')?.includes('text/event-stream')) {
+    throw new Error('聊天接口返回异常，请刷新记录后重试')
   }
 
-  if (!res.ok || !res.body){
-    throw new Error('流式接口失败')
-  }
-  const contentType = res.headers.get('content-type')
-  if (!contentType.includes('text/event-stream')){
-    throw new Error('流式接口返回异常')
-  }
-  const reader = res.body.getReader()
+  const reader = response.body.getReader()
   const decoder = new TextDecoder('utf-8')
   let buffer = ''
+  let terminal = false
 
-  while(true) {
-    const { done, value } = await reader.read()
-    if (done) break //结束标
-    buffer += decoder.decode(value, { stream: true})
-    const chunks = buffer.split("\n\n")
-    buffer = chunks.pop()
-    for (const chunk of chunks) {
-      const line = chunk
-        .split("\n")
-        .map(item => item.trim())
-        .find((item) => item.startsWith('data:'))
-      if (!line) continue
-      const res = line.slice(5).trim()
-      if (!res || res === '[DONE]') continue
-      try{
-        onEvent(JSON.parse(res))
-      } catch {}
+  const dispatch = (frame) => {
+    const data = frame
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+      .join('\n')
+    if (!data) return
+    const event = JSON.parse(data)
+    onEvent(event)
+    terminal = event.type === 'done' || event.type === 'error'
+  }
+
+  try {
+    while (!terminal) {
+      const { done, value } = await reader.read()
+      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true })
+      let boundary
+      while (!terminal && (boundary = /\r?\n\r?\n/.exec(buffer))) {
+        const frame = buffer.slice(0, boundary.index)
+        buffer = buffer.slice(boundary.index + boundary[0].length)
+        dispatch(frame)
+      }
+      if (done) {
+        if (!terminal && buffer.trim()) dispatch(buffer)
+        if (!terminal) throw new Error('回复连接已中断，请刷新记录确认保存结果')
+        break
+      }
     }
+  } finally {
+    await reader.cancel().catch(() => {})
+    reader.releaseLock()
   }
 }

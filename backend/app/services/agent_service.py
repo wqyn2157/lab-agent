@@ -1,7 +1,8 @@
-from importlib import metadata
 import traceback
 from typing import Any
 
+from fastapi import HTTPException
+from app.services import conversation_service
 from langchain_openai import ChatOpenAI
 from langgraph.graph import START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -9,7 +10,6 @@ from sqlalchemy.orm import Session
 from app.common.exceptions import BusinessException
 from app.config import settings
 from app.models.user import User
-from app.schemas.ai import ChatRequest
 from app.services import agent_tools
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage
 
@@ -75,16 +75,41 @@ TOOL_LABELS = {
 }
 
 
-def _build_history(data: ChatRequest) -> list:
-    """前端的消息 转成LangChain的消息对象"""
+# def _build_history(data: ChatRequest) -> list:
+#     """前端的消息 转成LangChain的消息对象"""
+#     history = []
+#     for message in data.messages:
+#         if message.role == "user" and message.content.strip():
+#             history.append(HumanMessage(content=message.content.strip()))
+#         elif message.role == "assistant" and message.content.strip():
+#             history.append(AIMessage(content=message.content.strip()))
+#     if not history:
+#         raise BusinessException(message="请输入您的对话内容")
+#     return history
+
+
+def _build_conversation_history(
+    db: Session,
+    current_user: User,
+    conversation_id: int,
+) -> list:
+    messages = conversation_service.get_context_messages(
+        db, current_user, conversation_id
+    )
+
     history = []
-    for message in data.messages:
-        if message.role == "user" and message.content.strip():
-            history.append(HumanMessage(content=message.content.strip()))
-        elif message.role == "assistant" and message.content.strip():
-            history.append(AIMessage(content=message.content.strip()))
-    if not history:
-        raise BusinessException(message="请输入您的对话内容")
+
+    for message in messages:
+        text = message.content.strip()
+
+        if not text:
+            continue
+
+        if message.role == "user":
+            history.append(HumanMessage(content=text))
+        elif message.role == "assistant":
+            history.append(AIMessage(content=text))
+
     return history
 
 
@@ -118,13 +143,18 @@ def _chunk_text(chunk: Any):
     return str(content) if content is not None else ""
 
 
-async def stream_agent(db: Session, current_user: User, data: ChatRequest):
+async def stream_agent(
+    db: Session,
+    current_user: User,
+    conversation_id: int,
+    history: list,
+):
     """
     生成器： 边跑 agent 边 yield 事件 提供 SSE 输出给前端
     事件的类型：status | tool_start | tool_end | token | done | error
     """
     try:
-        history = _build_history(data)
+        reply_parts = []
         agent = build_agent(db, current_user)
         inputs = {"messages": [SystemMessage(content=SYSTEM_PROMPT), *history]}
 
@@ -167,14 +197,39 @@ async def stream_agent(db: Session, current_user: User, data: ChatRequest):
                 metadata = event.get("metadata") or {}
                 if metadata.get("langgraph_node") not in (None, "agent"):
                     continue
+
                 text = _chunk_text((event.get("data") or {}).get("chunk"))
-                yield {"type": "token", "content": text}
-        yield {"type": "done"}
+
+                if text:
+                    reply_parts.append(text)
+                    yield {"type": "token", "content": text}
+        message_id = conversation_service.save_assistant_message(
+            db,
+            current_user,
+            conversation_id,
+            "".join(reply_parts),
+        )
+        yield {
+            "type": "done",
+            "conversation_id": conversation_id,
+            "message_id": message_id,
+        }
+
+    except HTTPException as e:
+        db.rollback()
+        yield {"type": "error", "message": str(e.detail)}
+
     except BusinessException as e:
+        db.rollback()
         yield {"type": "error", "message": e.message}
-    except Exception as e:
+
+    except Exception:
+        db.rollback()
         traceback.print_exc()
-        yield {"type": "error", "message": "大模型调用失败，请稍候重试"}
+        yield {
+            "type": "error",
+            "message": "生成或保存回复失败，请稍候重试",
+        }
 
 
 def build_agent(db: Session, current_user: User):

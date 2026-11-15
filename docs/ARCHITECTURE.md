@@ -36,6 +36,7 @@ flowchart LR
 | `backend/app/dependencies/auth.py` | JWT、账号状态和管理员权限检查 |
 | `backend/app/services/reservation_service.py` | 预约创建、查询、取消、审核和过期处理 |
 | `backend/app/services/agent_service.py` | 消息转换、Agent 图和流式事件转换 |
+| `backend/app/services/conversation_service.py` | 会话归属、分页、删除、上下文读取和消息保存 |
 | `backend/app/services/agent_tools.py` | 绑定当前用户与数据库会话的工具集合 |
 | `backend/app/services/kb_service.py` | 文档同步、嵌入、检索和结果筛选 |
 | `backend/app/models/` | SQLAlchemy 数据模型 |
@@ -66,6 +67,9 @@ flowchart LR
 | `labs` | 实验室位置、容量、开放时间和启用状态 |
 | `equipments` | 设备型号、数量和状态；`lab_id` 关联实验室 |
 | `reservation` | 关联用户、实验室及可选设备，记录日期、时段和审核状态 |
+| `reservation_drafts` | 预约快照、确认凭证哈希、到期时间、状态及首次确认幂等键 |
+| `conversations` | 所属用户、会话标题；按用户查询 |
+| `chat_messages` | 所属会话、user/assistant 角色和文本；按会话查询 |
 
 模型共同拥有 ID、创建时间和更新时间。业务日期与时段当前以字符串保存，输入需要统一为 `YYYY-MM-DD` 和 `HH:mm`。
 
@@ -88,7 +92,7 @@ flowchart LR
 
 因此 `09:00—10:00` 与 `10:00—11:00` 可以首尾相接；`08:00—11:00` 与 `09:00—10:00` 会冲突。
 
-当前按设备 ID 判断设备预约冲突，整间预约则只匹配 `equipment_id` 为空的记录。两类预约之间的互斥、设备数量容量，以及并发请求的原子性保障尚未实现。
+当前按设备 ID 判断设备预约冲突，整间预约则只匹配 `equipment_id` 为空的记录。两类预约之间的互斥和设备数量容量尚未实现。实际预约创建通过共享资源行锁校验冲突，确认单通过行锁和幂等键避免重复确认。
 
 | 状态值 | 含义 | 当前主要流转 |
 | --- | --- | --- |
@@ -101,7 +105,7 @@ flowchart LR
 
 ## Agent 与流式响应
 
-前端发送当前对话的 `role/content`，后端转换为 LangChain 消息，附加系统提示词。每次请求构建一个图，未配置持久化 checkpoint。
+前端只发送 `conversation_id/message`。后端在开始 SSE 前校验会话归属、提交本次用户消息，读取最近 20 条文本并转换为 LangChain 消息，附加系统提示词。每次请求构建一个图，未配置 checkpoint；聊天文本由业务表持久化。正常生成结束后只保存一次完整助手回复，提交成功才发送 `done`。
 
 ```mermaid
 flowchart LR
@@ -111,27 +115,29 @@ flowchart LR
     AGENT -->|"返回最终回答"| END["结束"]
 ```
 
-工具包括知识库检索、查询开放实验室、查询设备、创建预约、获取日期和查询预约。工具通过闭包引用当前用户和注入的数据库会话，复用业务服务。图配置 `recursion_limit=10`，用于限制图执行步数，不代表允许十次预约或十轮完整对话。
+工具包括知识库检索、查询开放实验室、查询设备、生成待确认单、获取日期和查询预约。工具通过闭包引用当前用户和数据库会话，复用业务服务。图配置 `recursion_limit=10`，用于限制图执行步数，不代表允许十次预约或十轮完整对话。
 
-预约前复述参数并等待确认目前是提示词规则，后端没有确认单、确认凭证或请求幂等键。
+预约工具只创建待确认单，不创建真实预约。确认凭证通过 ToolMessage artifact 发送给页面卡片，不进入模型消息正文；用户点击按钮后通过独立接口确认或取消。历史会话目前只恢复文本，不恢复卡片、工具过程或本地操作提示。
 
 `POST /api/ai/chat/stream` 通过 SSE 返回以下 JSON 事件：
 
 | `type` | 主要字段 | 页面用途 |
 | --- | --- | --- |
+| `conversation` | `conversation_id` | 首事件，记录当前会话 ID |
 | `status` | `message` | 显示思考状态 |
 | `tool_start` | `name`、`label` | 展示工具开始 |
 | `tool_end` | `name`、`label`、`preview` | 展示工具完成和最多约200字符的结果预览 |
 | `token` | `content` | 追加模型文本 |
-| `done` | 无额外字段 | 标记正常结束 |
+| `reservation_draft` | `data` | 显示当前轮的预约确认卡片 |
+| `done` | `conversation_id`、`message_id` | 标记完整助手回复已保存 |
 | `error` | `message` | 显示生成过程中发生的错误 |
 
-前端使用 Fetch 读取带 Authorization 的 POST 响应，将 `data: <JSON>\n\n` 分割为事件。工具步骤不放入下一次聊天历史；聊天正文经 Marked 解析，再由 DOMPurify 清理。
+前端使用 Fetch 读取带 Authorization 的 POST 响应，将 `data: <JSON>\n\n` 分割为事件。历史完全由服务端读取；聊天正文经 Marked 解析，再由 DOMPurify 清理。流结束但没有收到结束事件时，页面提示刷新核对，不默认为成功，也不自动重发消息。
 
 ## 接口和运行边界
 
 普通响应为 `code/message/data`。业务异常处理器使用 HTTP 200 包装业务错误码；HTTP 异常与参数错误则使用对应 HTTP 状态。流式响应开始后的错误通过 `error` 事件传递。
 
-当前数据库会话由 FastAPI 依赖创建，并在依赖清理阶段关闭。部分工具捕获异常后返回错误文本，预约查询工具还会调用 `rollback()`；其他数据库工具的事务恢复与并发会话使用仍需统一设计。
+普通请求的数据库会话由 FastAPI 依赖创建。聊天在用户消息提交后读取历史并结束只读事务；流式生成阶段使用独立 SessionLocal，会在生成结束或取消时关闭。生成待确认单的工具另用自己的会话。部分只读工具仍共用流式会话，它们的并行访问和事务恢复仍需统一设计。
 
-本项目目前按本地单后端进程组织。多进程部署、事务并发控制、后台任务调度、日志追踪、测试和数据库迁移属于后续工作。
+会话及前端已有隔离回归测试，运行方式见 README。本项目目前按本地单后端进程组织；同会话多客户端并发发送/删除的互斥、多进程部署、后台任务调度、日志追踪和数据库迁移属于后续工作。

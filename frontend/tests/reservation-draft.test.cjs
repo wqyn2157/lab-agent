@@ -105,7 +105,7 @@ function mount(t, component, props = {}) {
   const root = element('root')
   const vm = app.mount(root)
   t.after(() => app.unmount())
-  return { root, state: vm.$.setupState }
+  return { root, state: vm.$.setupState, unmount: () => app.unmount() }
 }
 function text(node) {
   return node.type === '#comment' ? '' : node.text + node.children.map(text).join('')
@@ -161,6 +161,27 @@ function cardComponent(api, cancelApi = async () => assert.fail('Unexpected canc
     '@/api/reservation': {
       confirmReservationDraftApi: api,
       cancelReservationDraftApi: cancelApi
+    }
+  })
+}
+
+function chatComponent(apis = {}, options = {}) {
+  return loadComponent('src/views/AIChat.vue', {
+    '@/api/ai': {
+      getConversationsApi: async () => ({ code: 200, data: { list: [], total: 0 } }),
+      getConversationMessagesApi: async () => ({ code: 200, data: { list: [], total: 0 } }),
+      deleteConversationApi: async () => assert.fail('Unexpected deletion'),
+      chatStreamApi: async () => assert.fail('Unexpected chat request'),
+      ...apis
+    },
+    '@/components/ReservationDraftCard.vue': {
+      default: options.card || cardComponent(async () => assert.fail('Unexpected confirmation'))
+    },
+    marked: { marked: { setOptions() {}, parse: (value) => value } },
+    dompurify: { default: { sanitize: (value) => value } },
+    'element-plus': {
+      ElMessage: { error: options.onError || ((message) => assert.fail(message)) },
+      ElMessageBox: { confirm: options.confirm || (async () => assert.fail('Unexpected dialog')) }
     }
   })
 }
@@ -243,34 +264,33 @@ test('expired untouched card and HTTP-200 business rejection cannot create a boo
   assert.equal(active.state.confirmed, false)
 })
 
-test('chat deduplicates SSE cards and sends only text plus verified success to model history', async (t) => {
+test('chat deduplicates cards and sends only the new message and server conversation ID', async (t) => {
   clock(t)
   const requests = []
   let confirmations = 0
   const card = draft()
-  const component = loadComponent('src/views/AIChat.vue', {
-    '@/api/ai': {
+  const component = chatComponent(
+    {
       chatStreamApi: async (data, onEvent) => {
         requests.push(data)
+        onEvent({ type: 'conversation', conversation_id: 12 })
         if (requests.length === 1) {
           onEvent({ type: 'reservation_draft', data: card })
           onEvent({ type: 'reservation_draft', data: card })
         }
         onEvent({ type: 'token', content: '请核对确认单。' })
-        onEvent({ type: 'done' })
+        onEvent({ type: 'done', conversation_id: 12, message_id: 100 + requests.length })
       }
     },
-    '@/components/ReservationDraftCard.vue': {
-      default: cardComponent(async () => {
+    {
+      card: cardComponent(async () => {
         confirmations++
         return { code: 200, data: { reservation_id: 14 } }
       })
-    },
-    marked: { marked: { setOptions() {}, parse: (value) => value } },
-    dompurify: { default: { sanitize: (value) => value } },
-    'element-plus': { ElMessage: { error: (message) => assert.fail(message) } }
-  })
+    }
+  )
   const { root, state } = mount(t, component)
+  await flush()
   state.input = '帮我预约'
   await state.handleSend()
   await flush()
@@ -279,14 +299,277 @@ test('chat deduplicates SSE cards and sends only text plus verified success to m
   findButton(root, '确认预约').props.onClick()
   await flush()
   assert.equal(confirmations, 1)
-  assert(state.messages.at(-1).content.includes('预约 #14 已提交'))
+  assert(state.messages.at(-1).notice.includes('预约 #14 已提交'))
   state.input = '查询预约记录'
   await state.handleSend()
   await flush()
-  const history = requests[1].messages
-  assert(history.some((message) => message.content.includes('预约 #14 已提交')))
-  assert(!JSON.stringify(history).includes('private-confirmation-token'))
-  assert(history.every((message) => Object.keys(message).sort().join(',') === 'content,role'))
+  assert.deepEqual(requests, [
+    { conversation_id: null, message: '帮我预约' },
+    { conversation_id: 12, message: '查询预约记录' }
+  ])
+  assert(!JSON.stringify(requests).includes('private-confirmation-token'))
+})
+
+test('mount restores the latest conversation; generating blocks navigation and duplicate sends', async (t) => {
+  const calls = []
+  let finish
+  const component = chatComponent({
+    getConversationsApi: async () => ({
+      code: 200,
+      data: { list: [{ id: 12, title: '旧会话' }], total: 1 }
+    }),
+    getConversationMessagesApi: async () => ({
+      code: 200,
+      data: {
+        list: [
+          { id: 1, role: 'user', content: '之前的问题' },
+          { id: 2, role: 'assistant', content: '之前的回答' }
+        ],
+        total: 2
+      }
+    }),
+    chatStreamApi: (data, onEvent) => {
+      calls.push(data)
+      onEvent({ type: 'conversation', conversation_id: 12 })
+      return new Promise((resolve) => {
+        finish = () => {
+          onEvent({ type: 'token', content: '新回答' })
+          onEvent({ type: 'done', conversation_id: 12, message_id: 4 })
+          resolve()
+        }
+      })
+    }
+  })
+  const { state } = mount(t, component)
+  await flush()
+  assert.equal(state.currentConversationId, 12)
+  assert.deepEqual(
+    state.messages.map((m) => m.content),
+    ['之前的问题', '之前的回答']
+  )
+  state.input = '继续之前的话题'
+  const sending = state.handleSend()
+  state.input = '重复发送'
+  await state.handleSend()
+  state.startNewConversation()
+  await state.selectConversation(99)
+  assert.equal(state.currentConversationId, 12)
+  assert.equal(calls.length, 1)
+  finish()
+  await sending
+  assert.deepEqual(calls[0], { conversation_id: 12, message: '继续之前的话题' })
+  assert.equal(state.messages.at(-1).content, '新回答')
+})
+
+test('a fresh page reads stored messages from APIs instead of replaying a request', async (t) => {
+  let saved = false
+  const requests = []
+  const apis = {
+    getConversationsApi: async () => ({
+      code: 200,
+      data: { list: saved ? [{ id: 12, title: '已保存会话' }] : [], total: saved ? 1 : 0 }
+    }),
+    getConversationMessagesApi: async () => ({
+      code: 200,
+      data: {
+        list: [
+          { id: 1, role: 'user', content: 'hello' },
+          { id: 2, role: 'assistant', content: 'saved reply' }
+        ],
+        total: 2
+      }
+    }),
+    chatStreamApi: async (data, onEvent) => {
+      requests.push(data)
+      saved = true
+      onEvent({ type: 'conversation', conversation_id: 12 })
+      onEvent({ type: 'token', content: 'saved reply' })
+      onEvent({ type: 'done', conversation_id: 12, message_id: 2 })
+    }
+  }
+  const first = mount(t, chatComponent(apis))
+  await flush()
+  first.state.input = 'hello'
+  await first.state.handleSend()
+  const refreshed = mount(t, chatComponent(apis))
+  await flush()
+  assert.equal(refreshed.state.currentConversationId, 12)
+  assert.deepEqual(
+    refreshed.state.messages.map((m) => m.content),
+    ['hello', 'saved reply']
+  )
+  assert.equal(refreshed.state.restoredHistory, true)
+  assert.equal(requests.length, 1)
+})
+
+test('loading older messages preserves order and ignores shifted-page overlap', async (t) => {
+  const row = (id) => ({ id, role: 'user', content: `message ${id}` })
+  const component = chatComponent({
+    getConversationsApi: async () => ({
+      code: 200,
+      data: { list: [{ id: 12, title: '分页会话' }], total: 1 }
+    }),
+    getConversationMessagesApi: async (id, params) => ({
+      code: 200,
+      data: {
+        list:
+          params.page === 1
+            ? Array.from({ length: 50 }, (_, i) => row(i + 51))
+            : Array.from({ length: 50 }, (_, i) => row(i + 3)),
+        total: params.page === 1 ? 100 : 102
+      }
+    })
+  })
+  const { state } = mount(t, component)
+  await flush()
+  const lastMessage = state.messages.at(-1)
+  await state.loadOlderMessages()
+  assert.deepEqual(
+    state.messages.map((m) => m.id),
+    Array.from({ length: 98 }, (_, i) => i + 3)
+  )
+  assert.equal(state.messages.at(-1), lastMessage)
+})
+
+test('an interrupted response blocks resend until records are refreshed', async (t) => {
+  let requests = 0
+  const errors = []
+  const component = chatComponent(
+    {
+      getConversationsApi: async () => ({
+        code: 200,
+        data: { list: requests ? [{ id: 12, title: '中断会话' }] : [], total: requests ? 1 : 0 }
+      }),
+      getConversationMessagesApi: async () => ({
+        code: 200,
+        data: { list: [{ id: 1, role: 'user', content: 'hello' }], total: 1 }
+      }),
+      chatStreamApi: async (data, onEvent) => {
+        requests++
+        onEvent({ type: 'conversation', conversation_id: 12 })
+        onEvent({ type: 'token', content: '半截回复' })
+        throw new Error('连接中断')
+      }
+    },
+    { onError: (message) => errors.push(message) }
+  )
+  const { state } = mount(t, component)
+  await flush()
+  state.input = 'hello'
+  await state.handleSend()
+  assert.equal(state.syncRequired, true)
+  assert.equal(state.messages.at(-1).content, '半截回复')
+  assert.equal(state.messages.at(-1).error, '连接中断')
+  state.input = '不能直接继续'
+  await state.handleSend()
+  assert.equal(requests, 1)
+  await state.reloadRecords()
+  assert.equal(state.syncRequired, false)
+  assert.deepEqual(
+    state.messages.map((m) => m.content),
+    ['hello']
+  )
+  assert.deepEqual(errors, ['连接中断'])
+})
+
+test('a failed history load prevents sending with an unverified conversation', async (t) => {
+  const component = chatComponent({
+    getConversationsApi: async () => ({
+      code: 200,
+      data: { list: [{ id: 12, title: '旧会话' }], total: 1 }
+    }),
+    getConversationMessagesApi: async () => {
+      throw new Error('读取失败')
+    }
+  })
+  const { state } = mount(t, component)
+  await flush()
+  assert.equal(state.historyReady, false)
+  assert.equal(state.historyError, '读取失败')
+  state.input = '不应发送'
+  await state.handleSend()
+  assert.equal(state.messages.length, 1)
+})
+
+test('a deleted conversation cannot keep accepting retries under its old ID', async (t) => {
+  let requests = 0
+  const component = chatComponent(
+    {
+      getConversationsApi: async () => ({
+        code: 200,
+        data: { list: [{ id: 12, title: '旧会话' }], total: 1 }
+      }),
+      chatStreamApi: async () => {
+        requests++
+        throw Object.assign(new Error('会话不存在'), { status: 404 })
+      }
+    },
+    { onError() {} }
+  )
+  const { state } = mount(t, component)
+  await flush()
+  state.input = 'hello'
+  await state.handleSend()
+  assert.equal(state.canCompose, false)
+  assert(state.historyError.includes('不存在'))
+  await state.handleSend()
+  assert.equal(requests, 1)
+  state.startNewConversation()
+  assert.equal(state.currentConversationId, null)
+  assert.equal(state.canCompose, true)
+})
+
+test('done without a valid saved message ID is treated as an unknown outcome', async (t) => {
+  const component = chatComponent(
+    {
+      chatStreamApi: async (data, onEvent) => {
+        onEvent({ type: 'conversation', conversation_id: 12 })
+        onEvent({ type: 'token', content: 'reply' })
+        onEvent({ type: 'done', conversation_id: 12, message_id: 0 })
+      }
+    },
+    { onError() {} }
+  )
+  const { state } = mount(t, component)
+  await flush()
+  state.input = 'hello'
+  await state.handleSend()
+  assert.equal(state.syncRequired, true)
+  assert.equal(state.canCompose, false)
+})
+
+test('deleting requires confirmation and resets only the active conversation', async (t) => {
+  let cancelled = true
+  const deleted = []
+  const component = chatComponent(
+    {
+      getConversationsApi: async () => ({
+        code: 200,
+        data: {
+          list: deleted.length ? [] : [{ id: 12, title: '待删除会话' }],
+          total: deleted.length ? 0 : 1
+        }
+      }),
+      deleteConversationApi: async (id) => {
+        deleted.push(id)
+        return { code: 200, data: null }
+      }
+    },
+    {
+      confirm: async () => {
+        if (cancelled) throw 'cancel'
+      }
+    }
+  )
+  const { state } = mount(t, component)
+  await flush()
+  await state.deleteConversation({ id: 12, title: '待删除会话' })
+  assert.deepEqual(deleted, [])
+  cancelled = false
+  await state.deleteConversation({ id: 12, title: '待删除会话' })
+  assert.deepEqual(deleted, [12])
+  assert.equal(state.currentConversationId, null)
+  assert.equal(state.messages[0].key, 'welcome')
 })
 
 test('cancelling blocks confirmation and duplicate cancellation, then closes the card', async (t) => {

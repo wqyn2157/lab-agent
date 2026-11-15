@@ -23,6 +23,8 @@ def get_current_user(
     if not user_id:
         raise HTTPException(status_code=401, detail="无效的登录凭证")
     user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="用户不存在")
     if user.status == 0:
         raise HTTPException(status_code=401, detail="账号已被禁用")
     return user
