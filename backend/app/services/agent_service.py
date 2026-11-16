@@ -75,19 +75,6 @@ TOOL_LABELS = {
 }
 
 
-# def _build_history(data: ChatRequest) -> list:
-#     """前端的消息 转成LangChain的消息对象"""
-#     history = []
-#     for message in data.messages:
-#         if message.role == "user" and message.content.strip():
-#             history.append(HumanMessage(content=message.content.strip()))
-#         elif message.role == "assistant" and message.content.strip():
-#             history.append(AIMessage(content=message.content.strip()))
-#     if not history:
-#         raise BusinessException(message="请输入您的对话内容")
-#     return history
-
-
 def _build_conversation_history(
     db: Session,
     current_user: User,

@@ -4,6 +4,7 @@ from app.config import BASE_DIR
 import chromadb
 from chromadb.utils import embedding_functions
 from threading import Lock
+from app.services.text_splitter import split_text
 
 _kb_lock = Lock()
 
@@ -57,16 +58,24 @@ def get_collection() -> Collection:
             if not text:
                 continue
 
-            doc_id = path.stem
-            active_ids.add(doc_id)
+            chunks = split_text(text)
 
-            # 内容没变化，不需要重新生成向量
-            if old_docs.get(doc_id) == text:
-                continue
+            for chunk_index, chunk in enumerate(chunks):
+                doc_id = f"{path.stem}::chunk::{chunk_index}"
+                active_ids.add(doc_id)
 
-            ids.append(doc_id)
-            docs.append(text)
-            metas.append({"source": path.name})
+                # 片段内容没变，就不重新生成向量
+                if old_docs.get(doc_id) == chunk:
+                    continue
+
+                ids.append(doc_id)
+                docs.append(chunk)
+                metas.append(
+                    {
+                        "source": path.name,
+                        "chunk_index": chunk_index,
+                    }
+                )
 
         # ID 不存在则新增，已存在则更新原文和向量
         if ids:
@@ -104,7 +113,7 @@ def search(query: str):
     distances = (res.get("distances") or [[]])[0]
     """
     以下是检索出来的资料：
-    [预约规则.md]
+    [预约规则.md · 片段 2]
 
     # 实验室预约规则...
 
@@ -115,12 +124,20 @@ def search(query: str):
 
     """
     score_parts = []
-    for docs, metas, dist in zip(docs, metas, distances):
+
+    for doc, meta, dist in zip(docs, metas, distances):
         score = 1 / (1 + dist)
         if score < 0.5:
             continue
-        name = metas.get("source") or ""
-        score_parts.append({"score": score, "content": f"[{name}]\n{docs}"})
+        name = meta.get("source") or "未知来源"
+        chunk_no = meta.get("chunk_index", 0) + 1
+
+        score_parts.append(
+            {
+                "score": score,
+                "content": f"[{name} · 片段 {chunk_no}]\n{doc}",
+            }
+        )
     print(f"检索出来的 score_parts: {score_parts}")
     score_parts.sort(key=lambda x: x["score"], reverse=True)
     final_parts = [item["content"] for item in score_parts[:2]]
