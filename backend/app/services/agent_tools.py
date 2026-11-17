@@ -16,7 +16,9 @@ def build_tools(db: Session, current_user: User):
 
     @tool
     def search_lab_docs(query: str) -> str:
-        """根据用户的提问检索知识库"""
+        """检索实验室规则、开放时间、设备原理、使用方法和安全要求。
+        不用于确认真实库存或个人预约状态，资料未覆盖的做法不能推测。
+        """
 
         try:
             return kb_service.search(query) or "没有检索到相关的资料"
