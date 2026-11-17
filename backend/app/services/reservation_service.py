@@ -1,7 +1,7 @@
 import asyncio
 
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.common.exceptions import BusinessException
 from app.common.response import PageResponse
 from app.database import SessionLocal
@@ -19,6 +19,7 @@ def get_reservation_page_list(
     page_size: int,
     status: int | None,
     user_id: int | None,
+    created_date: str | None = None,
 ):
     """查询预约的记录"""
     query = db.query(Reservation)
@@ -28,6 +29,21 @@ def get_reservation_page_list(
         query = query.filter(Reservation.user_id == user_id)
     if status is not None:
         query = query.filter(Reservation.status == status)
+    if created_date is not None:
+        try:
+            day_start = datetime.strptime(created_date, "%Y-%m-%d")
+        except ValueError as exc:
+            raise BusinessException(
+                message="提交日期格式应为 YYYY-MM-DD",
+                code=422,
+            ) from exc
+
+        day_end = day_start + timedelta(days=1)
+
+        query = query.filter(
+            Reservation.create_time >= day_start,
+            Reservation.create_time < day_end,
+        )
     total = query.count()
     items = (
         query.order_by(Reservation.id.desc())

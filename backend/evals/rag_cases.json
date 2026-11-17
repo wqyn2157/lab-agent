@@ -1,0 +1,239 @@
+{
+  "version": 1,
+  "description": "RAG 人工标注开发集：20 条资料内问题、3 条资料外问题、2 条业务数据查询。用于调试和回归，不作为独立测试集或回答准确率证明。",
+  "cases": [
+    {
+      "id": "R01",
+      "category": "direct",
+      "question": "管理员账号可以提交实验室预约吗？",
+      "expected_behavior": "answer",
+      "evidence": [{"source": "预约规则.md", "quote": "管理员身份不能提交预约"}],
+      "answer_points": ["管理员不能提交预约；只有学生身份可以提交。"]
+    },
+    {
+      "id": "R02",
+      "category": "direct",
+      "question": "本人能取消哪些预约，已经审核通过的也能自己取消吗？",
+      "expected_behavior": "answer",
+      "evidence": [
+        {"source": "预约规则.md", "quote": "当前本人可以在系统中取消自己的待审核预约"},
+        {"source": "预约规则.md", "quote": "已通过、已拒绝或已取消的正式预约，当前不能通过本人取消操作再次取消"}
+      ],
+      "answer_points": ["本人只能自行取消待审核的正式预约。", "已通过的不能自行取消，需要联系管理员。"]
+    },
+    {
+      "id": "R03",
+      "category": "paraphrase",
+      "question": "聊天里出现待确认卡片了，是不是已经预约成功、直接去用就行？",
+      "expected_behavior": "answer",
+      "evidence": [
+        {"source": "预约规则.md", "quote": "生成待确认单还没有创建正式预约"},
+        {"source": "预约规则.md", "quote": "正式提交后的预约状态为待审核，管理员审核通过后才能在批准时段使用"}
+      ],
+      "answer_points": ["卡片仅为待确认单，点击确认提交后才创建正式预约。", "正式提交后仍需审核通过才能使用。"]
+    },
+    {
+      "id": "R04",
+      "category": "direct",
+      "question": "同一设备已有 09:00—10:00 的有效预约，09:30—10:30 和 10:00—11:00 哪个会重叠？",
+      "expected_behavior": "answer",
+      "evidence": [
+        {"source": "预约规则.md", "quote": "申请 09:30—10:30 会冲突"},
+        {"source": "预约规则.md", "quote": "申请 10:00—11:00 首尾相接，不因这条已有预约发生时间重叠"}
+      ],
+      "answer_points": ["09:30—10:30 重叠。", "10:00—11:00 不与该记录重叠，但仍需满足开放时间等条件。"]
+    },
+    {
+      "id": "R05",
+      "category": "paraphrase",
+      "question": "机器标着维修，但是看着挺好、也能通电，我能预约或者先用吗？",
+      "expected_behavior": "answer",
+      "evidence": [
+        {"source": "设备使用.md", "quote": "维修中的设备不能预约"},
+        {"source": "设备使用.md", "quote": "只要系统标记维修，也不能自行使用"}
+      ],
+      "answer_points": ["不能预约或自行使用维修设备。", "联系管理员核实，不能凭外观或通电状态判断可用。"]
+    },
+    {
+      "id": "R06",
+      "category": "direct",
+      "question": "预约乙实验室时，可以选属于甲实验室的设备吗？",
+      "expected_behavior": "answer",
+      "evidence": [{"source": "设备使用.md", "quote": "不能把甲实验室的设备挂到乙实验室的预约上"}],
+      "answer_points": ["不可以，设备必须属于所选实验室。"]
+    },
+    {
+      "id": "R07",
+      "category": "paraphrase",
+      "question": "我约了一台仪器，是不是这间实验室里其他仪器也能随便用了？",
+      "expected_behavior": "answer",
+      "evidence": [{"source": "设备使用.md", "quote": "设备预约不代表获得该实验室全部仪器的使用权"}],
+      "answer_points": ["不代表，只能使用获准的资源。"]
+    },
+    {
+      "id": "R08",
+      "category": "direct",
+      "question": "计算机实验室周末的开放时间是多少？",
+      "expected_behavior": "answer",
+      "evidence": [{"source": "开放时间.md", "quote": "计算机实验室：周一至周五 08:00-21:00，周末 09:00-17:00"}],
+      "answer_points": ["周末 09:00—17:00，进入使用仍需预约并审核通过。"]
+    },
+    {
+      "id": "R09",
+      "category": "paraphrase",
+      "question": "我戴着近视眼镜，去化学实验室是不是就不用护目镜了？",
+      "expected_behavior": "answer",
+      "evidence": [
+        {"source": "安全规范.md", "quote": "进入化学实验室须戴护目镜"},
+        {"source": "安全规范.md", "quote": "护目镜不能由普通近视眼镜替代"}
+      ],
+      "answer_points": ["仍须戴护目镜，普通近视眼镜不能替代。"]
+    },
+    {
+      "id": "R10",
+      "category": "direct",
+      "question": "样品还有明显液体，可以直接放进常规高真空扫描电子显微镜吗？",
+      "expected_behavior": "answer",
+      "evidence": [{"source": "电子显微镜.md", "quote": "含有明显游离液体、易挥发物、松散颗粒或其他情况不明的样品，先交由指导人员评估，不直接放入设备"}],
+      "answer_points": ["不能直接放入，先由指导人员评估。", "不同模式和型号的条件可能不同。"]
+    },
+    {
+      "id": "R11",
+      "category": "paraphrase",
+      "question": "扫描电子显微镜的样品是不是一律都要喷金？",
+      "expected_behavior": "answer",
+      "evidence": [
+        {"source": "电子显微镜.md", "quote": "不意味着所有样品都必须喷金"},
+        {"source": "电子显微镜.md", "quote": "是否镀膜、使用何种材料和是否允许改变样品表面，应由指导人员确认"}
+      ],
+      "answer_points": ["不是一律喷金。", "需根据设备、样品和观察目标，由指导人员确认是否及如何处理。"]
+    },
+    {
+      "id": "R12",
+      "category": "document_tail",
+      "question": "电子显微镜使用结束后，登记表至少记哪些信息？",
+      "expected_behavior": "answer",
+      "evidence": [{"source": "电子显微镜.md", "quote": "至少记录使用人、实际时段、样品编号、数据保存位置和异常情况"}],
+      "answer_points": ["使用人、实际时段、样品编号、数据保存位置、异常情况。"]
+    },
+    {
+      "id": "R13",
+      "category": "direct",
+      "question": "更换示波器探头后，探头衰减与通道设置需要核对吗？",
+      "expected_behavior": "answer",
+      "evidence": [{"source": "示波器.md", "quote": "探头衰减设置与示波器中的通道设置应一致"}],
+      "answer_points": ["需要核对并保持一致，否则显示幅度可能不符合实际测量条件。"]
+    },
+    {
+      "id": "R14",
+      "category": "paraphrase",
+      "question": "普通接地台式示波器的地夹能接到任意信号端吗？能拆保护接地来浮地测量吗？",
+      "expected_behavior": "answer",
+      "evidence": [
+        {"source": "示波器.md", "quote": "不能把地夹当作任意可接的信号端"},
+        {"source": "示波器.md", "quote": "不得拆除保护接地来进行浮地测量"}
+      ],
+      "answer_points": ["两种做法都不可以。", "需要非地节点测量时，让指导人员确认合适的差分或隔离方案。"]
+    },
+    {
+      "id": "R15",
+      "category": "document_tail",
+      "question": "示波器结束使用后应归还哪些附件，发现线缆破损怎么办？",
+      "expected_behavior": "answer",
+      "evidence": [
+        {"source": "示波器.md", "quote": "归还探头、地线及转接附件"},
+        {"source": "示波器.md", "quote": "发现接触不良、线缆破损或附件缺失时告知管理员"}
+      ],
+      "answer_points": ["归还探头、地线及转接附件。", "发现破损或缺失时告知管理员并记录出现条件。"]
+    },
+    {
+      "id": "R16",
+      "category": "paraphrase",
+      "question": "离心管液面看着一样高，就可以认定离心机已经配平了吗？",
+      "expected_behavior": "answer",
+      "evidence": [{"source": "离心机.md", "quote": "配平需要考虑装载位置及质量，不能仅凭液面看起来一样就判断已经平衡"}],
+      "answer_points": ["不可以，仅看液面不足以判断。", "需按对应转子要求核对装载位置和质量。"]
+    },
+    {
+      "id": "R17",
+      "category": "direct",
+      "question": "两台离心机设置相同转速，实验条件就一定相同吗？",
+      "expected_behavior": "answer",
+      "evidence": [{"source": "离心机.md", "quote": "转速和相对离心力不是同一概念，不能只因两台设备设置相同转速就认定实验条件相同"}],
+      "answer_points": ["不一定，转速和相对离心力不同，条件要按设备与方案确认。"]
+    },
+    {
+      "id": "R18",
+      "category": "document_middle",
+      "question": "离心机运行中明显振动，能不能用手扶着它继续运行？",
+      "expected_behavior": "answer",
+      "evidence": [
+        {"source": "离心机.md", "quote": "按本机规定停止运行并通知管理员"},
+        {"source": "离心机.md", "quote": "不用手扶住运行中的设备，也不继续提高转速观察是否恢复"}
+      ],
+      "answer_points": ["不能用手扶着继续运行；按本机规定停机并通知管理员。"]
+    },
+    {
+      "id": "R19",
+      "category": "multi_source",
+      "question": "化学实验室周末开放吗？平时进入时，近视眼镜能代替护目镜吗？",
+      "expected_behavior": "answer",
+      "evidence": [
+        {"source": "开放时间.md", "quote": "化学实验室：周一至周五 08:30-18:00，周末不开放"},
+        {"source": "安全规范.md", "quote": "护目镜不能由普通近视眼镜替代"}
+      ],
+      "answer_points": ["化学实验室周末不开放。", "进入时须戴护目镜，普通近视眼镜不能替代。"]
+    },
+    {
+      "id": "R20",
+      "category": "multi_source",
+      "question": "电子显微镜做完要登记哪些信息？离开实验室前，个人账号和台面还要怎么处理？",
+      "expected_behavior": "answer",
+      "evidence": [
+        {"source": "电子显微镜.md", "quote": "至少记录使用人、实际时段、样品编号、数据保存位置和异常情况"},
+        {"source": "安全规范.md", "quote": "结束后保存实验数据，退出个人账号，清理台面并归还附件"}
+      ],
+      "answer_points": ["登记使用人、实际时段、样品编号、数据保存位置和异常情况。", "保存数据、退出个人账号、清理台面并归还附件。"]
+    },
+    {
+      "id": "R21",
+      "category": "out_of_scope",
+      "question": "预约后爽约，学校规定罚款多少钱？",
+      "expected_behavior": "abstain",
+      "evidence": [],
+      "answer_points": ["现有资料没有罚款金额规定，应说明无法从资料确认并联系管理员核实。", "不能编造金额、处罚或免罚规则。"]
+    },
+    {
+      "id": "R22",
+      "category": "out_of_scope",
+      "question": "每个学生每月最多允许预约几次？",
+      "expected_behavior": "abstain",
+      "evidence": [],
+      "answer_points": ["现有资料没有月度次数上限，不能编造具体次数，也不能把未规定解释为无限次。"]
+    },
+    {
+      "id": "R23",
+      "category": "out_of_scope",
+      "question": "使用离心机要交多少押金，什么时候退还？",
+      "expected_behavior": "abstain",
+      "evidence": [],
+      "answer_points": ["资料没有押金金额和退款流程，应说明无法确认并向管理员核实。", "不能因为资料没写就声称免费或无需押金。"]
+    },
+    {
+      "id": "R24",
+      "category": "live_data",
+      "question": "当前系统有哪些离心机，它们分别属于哪个实验室？",
+      "expected_behavior": "query_database",
+      "evidence": [],
+      "answer_points": ["查询真实实验室及设备数据，必要时先补充实验室范围。", "不能把知识库中的离心机说明当作系统实际库存。"]
+    },
+    {
+      "id": "R25",
+      "category": "live_data",
+      "question": "我昨天提交的预约现在审核通过了吗？",
+      "expected_behavior": "query_database",
+      "evidence": [],
+      "answer_points": ["通过预约记录工具查询当前用户的真实记录及状态，必要时澄清是哪条预约。", "不能用通用预约规则或旧聊天文本推断最新审核结果。"]
+    }
+  ]
+}

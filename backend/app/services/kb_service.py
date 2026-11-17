@@ -100,45 +100,47 @@ def warmup():
         col.query(query_texts=["预热"], n_results=1)
 
 
-def search(query: str):
-    """根据关键字检索向量库"""
+def search_chunks(query: str):
+    """检索并返回实际选中的片段"""
     col = get_collection()
-    if col.count() == 0:
-        return ""
+    count = col.count()
+    if count == 0:
+        return []
 
-    limit = min(5, col.count())
+    limit = min(5, count)
     res = col.query(query_texts=[query], n_results=limit)
+
     docs = (res.get("documents") or [[]])[0]  # [list]
     metas = (res.get("metadatas") or [[]])[0]  # [list]
     distances = (res.get("distances") or [[]])[0]
-    """
-    以下是检索出来的资料：
-    [预约规则.md · 片段 2]
 
-    # 实验室预约规则...
-
-
-    [安全规则.md]
-
-    # 安全规范...
-
-    """
-    score_parts = []
+    chunks = []
 
     for doc, meta, dist in zip(docs, metas, distances):
         score = 1 / (1 + dist)
         if score < 0.5:
             continue
-        name = meta.get("source") or "未知来源"
-        chunk_no = meta.get("chunk_index", 0) + 1
 
-        score_parts.append(
+        chunks.append(
             {
+                "source": meta.get("source") or "未知来源",
+                "chunk_index": meta.get("chunk_index", 0),
+                "content": doc,
                 "score": score,
-                "content": f"[{name} · 片段 {chunk_no}]\n{doc}",
             }
         )
-    print(f"检索出来的 score_parts: {score_parts}")
-    score_parts.sort(key=lambda x: x["score"], reverse=True)
-    final_parts = [item["content"] for item in score_parts[:2]]
-    return "\n\n".join(final_parts)
+
+    chunks.sort(key=lambda item: item["score"], reverse=True)
+    return chunks[:3]
+
+
+def search(query: str) -> str:
+    """将检索片段整理成给模型阅读的文本"""
+    chunks = search_chunks(query)
+
+    parts = [
+        f"[{chunk['source']} · 片段 {chunk['chunk_index'] + 1}]\n" f"{chunk['content']}"
+        for chunk in chunks
+    ]
+
+    return "\n\n".join(parts)

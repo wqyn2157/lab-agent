@@ -37,7 +37,7 @@ flowchart LR
 | `backend/app/services/reservation_service.py` | 预约创建、查询、取消、审核和过期处理 |
 | `backend/app/services/agent_service.py` | 消息转换、Agent 图和流式事件转换 |
 | `backend/app/services/conversation_service.py` | 会话归属、分页、删除、上下文读取和消息保存 |
-| `backend/app/services/agent_tools.py` | 绑定当前用户与数据库会话的工具集合 |
+| `backend/app/services/agent_tools.py` | 绑定当前用户 ID、为数据库工具分配独立会话的工具集合 |
 | `backend/app/services/kb_service.py` | 文档同步、嵌入、检索和结果筛选 |
 | `backend/app/models/` | SQLAlchemy 数据模型 |
 | `backend/app/schemas/` | 请求和响应结构 |
@@ -115,7 +115,9 @@ flowchart LR
     AGENT -->|"返回最终回答"| END["结束"]
 ```
 
-工具包括知识库检索、查询开放实验室、查询设备、生成待确认单、获取日期和查询预约。工具通过闭包引用当前用户和数据库会话，复用业务服务。图配置 `recursion_limit=10`，用于限制图执行步数，不代表允许十次预约或十轮完整对话。
+工具包括知识库检索、查询开放实验室、查询设备、生成待确认单、获取日期和查询预约。数据库工具每次调用使用自己的 SessionLocal，复用业务服务；预约记录查询和确认单工具通过捕获的用户 ID 重新加载用户，执行状态与权限校验。图配置 `recursion_limit=10`，用于限制图执行步数，不代表允许十次预约或十轮完整对话。
+
+预约记录工具支持 `created_date`，按记录创建时间筛选指定提交日期，再统计总数及分页。返回值区分 `create_time`（提交时间）与 `date`（预约使用日期），并包含筛选条件、`total`、`returned_count` 和 `has_more`；目前最多返回第一页的 10 条，不提供工具翻页参数。
 
 预约工具只创建待确认单，不创建真实预约。确认凭证通过 ToolMessage artifact 发送给页面卡片，不进入模型消息正文；用户点击按钮后通过独立接口确认或取消。历史会话目前只恢复文本，不恢复卡片、工具过程或本地操作提示。
 
@@ -138,6 +140,6 @@ flowchart LR
 
 普通响应为 `code/message/data`。业务异常处理器使用 HTTP 200 包装业务错误码；HTTP 异常与参数错误则使用对应 HTTP 状态。流式响应开始后的错误通过 `error` 事件传递。
 
-普通请求的数据库会话由 FastAPI 依赖创建。聊天在用户消息提交后读取历史并结束只读事务；流式生成阶段使用独立 SessionLocal，会在生成结束或取消时关闭。生成待确认单的工具另用自己的会话。部分只读工具仍共用流式会话，它们的并行访问和事务恢复仍需统一设计。
+普通请求的数据库会话由 FastAPI 依赖创建。聊天在用户消息提交后读取历史并结束只读事务；流式生成阶段使用独立 SessionLocal，会在生成结束或取消时关闭。查询实验室、查询设备、查询预约记录及生成确认单的工具各自创建并关闭独立会话，不与回复保存共用 Session。工具查询失败后的重试会创建新会话；并行工具调用不会共用同一个 ORM Session。
 
 会话及前端已有隔离回归测试，运行方式见 README。本项目目前按本地单后端进程组织；同会话多客户端并发发送/删除的互斥、多进程部署、后台任务调度、日志追踪和数据库迁移属于后续工作。

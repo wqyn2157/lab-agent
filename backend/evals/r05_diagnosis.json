@@ -1,0 +1,183 @@
+{
+  "id": "R05",
+  "question": "机器标着维修，但是看着挺好、也能通电，我能预约或者先用吗？",
+  "recall_limit": 5,
+  "final_limit": 2,
+  "score_threshold": 0.5,
+  "candidates": [
+    {
+      "rank_all": 1,
+      "source": "设备使用.md",
+      "chunk_index": 1,
+      "score": 0.7074322055324476,
+      "in_top5": true,
+      "selected": true,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 2,
+      "source": "电子显微镜.md",
+      "chunk_index": 1,
+      "score": 0.6895213381235208,
+      "in_top5": true,
+      "selected": true,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 3,
+      "source": "设备使用.md",
+      "chunk_index": 0,
+      "score": 0.6893776356480036,
+      "in_top5": true,
+      "selected": false,
+      "evidence_hits": [
+        "维修中的设备不能预约",
+        "只要系统标记维修，也不能自行使用"
+      ]
+    },
+    {
+      "rank_all": 4,
+      "source": "预约规则.md",
+      "chunk_index": 2,
+      "score": 0.6861895867888794,
+      "in_top5": true,
+      "selected": false,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 5,
+      "source": "设备使用.md",
+      "chunk_index": 2,
+      "score": 0.6843575667385865,
+      "in_top5": true,
+      "selected": false,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 6,
+      "source": "示波器.md",
+      "chunk_index": 0,
+      "score": 0.6805700975944508,
+      "in_top5": false,
+      "selected": false,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 7,
+      "source": "安全规范.md",
+      "chunk_index": 1,
+      "score": 0.6800304418839855,
+      "in_top5": false,
+      "selected": false,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 8,
+      "source": "安全规范.md",
+      "chunk_index": 0,
+      "score": 0.6758897280587031,
+      "in_top5": false,
+      "selected": false,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 9,
+      "source": "预约规则.md",
+      "chunk_index": 1,
+      "score": 0.6729126639835002,
+      "in_top5": false,
+      "selected": false,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 10,
+      "source": "预约规则.md",
+      "chunk_index": 0,
+      "score": 0.6651227022005259,
+      "in_top5": false,
+      "selected": false,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 11,
+      "source": "电子显微镜.md",
+      "chunk_index": 0,
+      "score": 0.6640391998543462,
+      "in_top5": false,
+      "selected": false,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 12,
+      "source": "安全规范.md",
+      "chunk_index": 2,
+      "score": 0.6637318363261608,
+      "in_top5": false,
+      "selected": false,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 13,
+      "source": "离心机.md",
+      "chunk_index": 0,
+      "score": 0.6604008708031311,
+      "in_top5": false,
+      "selected": false,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 14,
+      "source": "离心机.md",
+      "chunk_index": 1,
+      "score": 0.6527408264385383,
+      "in_top5": false,
+      "selected": false,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 15,
+      "source": "开放时间.md",
+      "chunk_index": 0,
+      "score": 0.6491361033268058,
+      "in_top5": false,
+      "selected": false,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 16,
+      "source": "示波器.md",
+      "chunk_index": 1,
+      "score": 0.64883806228363,
+      "in_top5": false,
+      "selected": false,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 17,
+      "source": "离心机.md",
+      "chunk_index": 2,
+      "score": 0.6465639769650916,
+      "in_top5": false,
+      "selected": false,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 18,
+      "source": "示波器.md",
+      "chunk_index": 2,
+      "score": 0.6446373144333347,
+      "in_top5": false,
+      "selected": false,
+      "evidence_hits": []
+    },
+    {
+      "rank_all": 19,
+      "source": "电子显微镜.md",
+      "chunk_index": 2,
+      "score": 0.6420867869563416,
+      "in_top5": false,
+      "selected": false,
+      "evidence_hits": []
+    }
+  ]
+}

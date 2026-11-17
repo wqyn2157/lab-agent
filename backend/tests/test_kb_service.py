@@ -28,23 +28,39 @@ class MemoryCollection:
 
 
 class KnowledgeBaseTests(unittest.TestCase):
+    def test_search_chunks_keeps_metadata_and_raw_content(self):
+        collection = Mock()
+        collection.count.return_value = 1
+        collection.query.return_value = {
+            "documents": [["raw evidence"]],
+            "metadatas": [[{"source": "rules.md", "chunk_index": 2}]],
+            "distances": [[0.25]],
+        }
+        with patch.object(kb_service, "get_collection", return_value=collection):
+            result = kb_service.search_chunks("question")
+        self.assertEqual(result, [{
+            "source": "rules.md", "chunk_index": 2,
+            "content": "raw evidence", "score": 0.8,
+        }])
+
     def test_search_formats_sources_filters_and_limits_chunks(self):
         collection = Mock()
-        collection.count.return_value = 4
+        collection.count.return_value = 5
         collection.query.return_value = {
-            "documents": [["second", "best", "filtered", "third"]],
+            "documents": [["second", "best", "filtered", "third", "fourth"]],
             "metadatas": [[
                 {"source": "rules.md", "chunk_index": 0},
                 {"source": "rules.md", "chunk_index": 2},
                 {"source": "other.md", "chunk_index": 1},
                 {"source": "other.md", "chunk_index": 0},
+                {"source": "other.md", "chunk_index": 3},
             ]],
-            "distances": [[0.8, 0.1, 1.5, 0.9]],
+            "distances": [[0.8, 0.1, 1.5, 0.9, 0.95]],
         }
         with patch.object(kb_service, "get_collection", return_value=collection), patch("builtins.print"):
             result = kb_service.search("question")
-        self.assertEqual(result, "[rules.md · 片段 3]\nbest\n\n[rules.md · 片段 1]\nsecond")
-        collection.query.assert_called_once_with(query_texts=["question"], n_results=4)
+        self.assertEqual(result, "[rules.md · 片段 3]\nbest\n\n[rules.md · 片段 1]\nsecond\n\n[other.md · 片段 1]\nthird")
+        collection.query.assert_called_once_with(query_texts=["question"], n_results=5)
 
     def test_search_handles_empty_library_and_no_matching_chunks(self):
         collection = Mock()

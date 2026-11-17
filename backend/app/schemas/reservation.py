@@ -1,4 +1,5 @@
 from pydantic import BaseModel, ConfigDict
+from datetime import datetime
 
 
 class ReservationCreateRequest(BaseModel):
@@ -24,6 +25,7 @@ class ReservationResponse(BaseModel):
     end_time: str
     remark: str | None = None
     status: int
+    create_time: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
