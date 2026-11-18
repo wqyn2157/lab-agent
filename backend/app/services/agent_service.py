@@ -19,7 +19,7 @@ SYSTEM_PROMPT = """你是智能实验室预约系统的 Agent，回答要简洁�
 ## 可使用的工具
 1. search_lab_docs：查询实验室规则、安全要求、开放时间等知识。
 2. list_open_labs：查询数据库中真实开放的实验室。
-3. list_lab_equipments：查询实验室设备信息。
+3. list_lab_equipments：查询真实设备登记；省略 lab_id 时跨全部实验室按设备名查询。
 4. prepare_lab_reservation：生成待确认单，等待用户在页面确认。
 5. get_today：获取当前日期，用于今天、明天、后天等日期换算。
 6. get_reservation_page_list：查询预约记录及其审核状态。
@@ -83,6 +83,7 @@ has_more=true 时说明只展示了部分记录，不得声称已列出全部。
 1. 不得编造数据库中不存在的实验室、设备和预约记录。
 2. 查询开放时间、实验室规则时，优先使用 search_lab_docs。
 3. 查询真实实验室、设备或预约记录时，调用对应数据库工具，知识库资料不能替代业务查询。结论仅限实际查询范围；只查询开放实验室时，不得断言全系统库存。列表条数、total 是登记记录数，quantity 是设备台数，不得把一条设备登记说成一台设备。
+   用户问全系统某种设备的库存或归属时，直接调用 list_lab_equipments(keywords=设备名)，省略 lab_id，不要通过开放实验室列表间接遍历。以工具 summary 的范围、单位和分页说明表述汇总；returned_quantity 只是本页登记台数，不代表可预约容量。
 4. 工具执行失败时，如实说明，不得假装操作成功。
 5. 回答保持简洁，使用清晰、自然的中文。
 """
@@ -298,43 +299,3 @@ def build_agent(db: Session, current_user: User):
     )  # 看有无tool_call，有就继续call  没有就END输出
     graph.add_edge("tools", "agent")  # 让agent看tool调用的结果
     return graph.compile()
-
-
-# def run_agent(db: Session, current_user: User, data: ChatRequest):
-#     """大模型对话"""
-#     if not data.messages:
-#         raise BusinessException(message="对话内容为空")
-#     history = []
-#     for message in data.messages:
-#         if message.role == "user" and message.content.strip():
-#             history.append(HumanMessage(content=message.content.strip()))
-#         elif message.role == "assistant" and message.content.strip():
-#             history.append(AIMessage(content=message.content.strip()))
-#     if not history:
-#         raise BusinessException(message="请输入您要对话的内容")
-
-#     agent = build_agent(db, current_user)
-#     try:
-#         result = agent.invoke(
-#             {"messages": [SystemMessage(content=SYSTEM_PROMPT), *history]},
-#             config={"recursion_limit": 10},
-#         )  # 设置对话循环的上限是10轮
-#     except BusinessException:
-#         raise
-#     except Exception as e:
-#         print("大模型调用失败，真实错误：", repr(e))
-#         raise BusinessException(message="大模型调用失败，请稍候重试")
-
-#     messages = result.get("messages") or []
-#     if not messages:
-#         raise BusinessException(message="大模型没有返回内容")
-#     for message in reversed(messages):
-#         if isinstance(message, AIMessage) and message.content.strip():
-#             content = message.content.strip()
-#             if isinstance(content, list):
-#                 content = "".join(
-#                     part.get("text", "") if isinstance(part, dict) else str(part)
-#                     for part in content
-#                 )
-#             if str(content).strip():
-#                 return str(content).strip()

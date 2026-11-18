@@ -87,6 +87,57 @@ class AgentToolSessionTests(unittest.TestCase):
                 self.assertIsNot(used_sessions[0], used_sessions[1])
                 self.assertTrue(all(not db.in_transaction() for db in used_sessions))
 
+    def test_equipment_global_scope_distinguishes_records_from_quantity(self):
+        with self.factory() as db:
+            closed = Lab(name="Closed fixture lab", status=0, capacity=5, open_time="08:00", close_time="20:00")
+            db.add(closed)
+            db.flush()
+            closed_id = closed.id
+            db.add_all([
+                Equipment(lab_id=self.lab_id, name="Fixture centrifuge", quantity=2, status=1),
+                Equipment(lab_id=closed_id, name="Fixture centrifuge", quantity=3, status=0),
+            ])
+            db.commit()
+        with self.factory() as stream_db:
+            tool = next(tool for tool in agent_tools.build_tools(stream_db, stream_db.get(User, self.owner_id)) if tool.name == "list_lab_equipments")
+            result = json.loads(tool.invoke({"keywords": "  centrifuge  "}))
+            scoped = json.loads(tool.invoke({"keywords": "centrifuge", "lab_id": self.lab_id}))
+            empty = json.loads(tool.invoke({"keywords": "absent equipment"}))
+        self.assertEqual(result["scope"], "全系统设备登记")
+        self.assertIsNone(result["lab_id"])
+        self.assertEqual(result["keywords"], "centrifuge")
+        self.assertEqual((result["total"], result["returned_count"], result["returned_quantity"], result["has_more"]), (2, 2, 5, False))
+        self.assertEqual({row["lab_id"] for row in result["equipments"]}, {self.lab_id, closed_id})
+        self.assertIn("匹配 2 条设备登记", result["summary"])
+        self.assertIn("登记数量合计 5 台", result["summary"])
+        self.assertIn("不代表指定时段可预约数量", result["summary"])
+        self.assertEqual(scoped["scope"], f"实验室 ID {self.lab_id} 的设备登记")
+        self.assertEqual((scoped["total"], scoped["returned_count"], scoped["returned_quantity"]), (1, 1, 2))
+        self.assertEqual((empty["total"], empty["returned_count"], empty["returned_quantity"], empty["has_more"]), (0, 0, 0, False))
+
+    def test_equipment_paginated_quantity_only_counts_returned_records(self):
+        with self.factory() as db:
+            for i in range(12):
+                db.add(Equipment(lab_id=self.lab_id, name=f"Fixture centrifuge {i}", quantity=i + 1, status=1))
+            db.commit()
+        with self.factory() as stream_db:
+            tool = next(tool for tool in agent_tools.build_tools(stream_db, stream_db.get(User, self.owner_id)) if tool.name == "list_lab_equipments")
+            result = json.loads(tool.invoke({"keywords": "centrifuge"}))
+        self.assertEqual((result["total"], result["returned_count"], result["has_more"]), (12, 10, True))
+        self.assertEqual(result["returned_quantity"], sum(row["quantity"] for row in result["equipments"]))
+        self.assertEqual(result["returned_quantity"], sum(range(3, 13)))
+        self.assertNotEqual(result["returned_quantity"], sum(range(1, 13)))
+        self.assertIn("不能当作全部库存", result["summary"])
+
+    def test_equipment_invalid_lab_id_does_not_fall_back_to_global_query(self):
+        with self.factory() as stream_db, patch.object(agent_tools.equipment_service, "get_equipment_page_list") as query:
+            tool = next(tool for tool in agent_tools.build_tools(stream_db, stream_db.get(User, self.owner_id)) if tool.name == "list_lab_equipments")
+            for lab_id in [0, -1]:
+                with self.subTest(lab_id=lab_id):
+                    result = json.loads(tool.invoke({"lab_id": lab_id}))
+                    self.assertFalse(result["ok"])
+            query.assert_not_called()
+
     def test_parallel_equipment_calls_have_separate_sessions(self):
         barrier = Barrier(2, timeout=5)
         lock = Lock()

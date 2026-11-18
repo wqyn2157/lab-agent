@@ -65,16 +65,26 @@ def build_tools(db: Session, current_user: User):
             )
 
     @tool
-    def list_lab_equipments(lab_id: int, keywords: str = "") -> str:
-        """查询某个实验室的设备列表"""
+    def list_lab_equipments(lab_id: int | None = None, keywords: str = "") -> str:
+        """查询真实设备登记。lab_id 省略时按设备名跨全部实验室查询，
+        不必先查询开放实验室；指定 lab_id 时只查该实验室。
+        total 是登记记录数，returned_quantity 是本页登记台数，不是可预约容量。
+        has_more 为 true 时仅返回部分记录。展示结果时保留 summary 中的范围和单位。
+        """
         try:
+            if lab_id is not None and lab_id <= 0:
+                return json.dumps(
+                    {"ok": False, "error": "实验室 ID 必须为正整数"},
+                    ensure_ascii=False,
+                )
+            keywords = keywords.strip() or None
             with SessionLocal() as tool_db:
                 page = equipment_service.get_equipment_page_list(
                     tool_db,
                     page=1,
                     page_size=10,
                     lab_id=lab_id,
-                    keywords=keywords.strip() or None,
+                    keywords=keywords,
                 )
 
                 rows = [
@@ -90,8 +100,27 @@ def build_tools(db: Session, current_user: User):
                     for item in page.list
                 ]
 
+                scope = "全系统设备登记" if lab_id is None else f"实验室 ID {lab_id} 的设备登记"
+                returned_quantity = sum(row["quantity"] for row in rows)
+                has_more = page.total > len(rows)
+                summary = (
+                    f"查询范围：{scope}；匹配 {page.total} 条设备登记，"
+                    f"本页列出 {len(rows)} 条，登记数量合计 {returned_quantity} 台。"
+                    + ("仍有后续记录，不能当作全部库存。" if has_more else "已列出全部匹配记录。")
+                    + "登记数量不代表指定时段可预约数量。"
+                )
                 return json.dumps(
-                    {"total": page.total, "equipments": rows},
+                    {
+                        "scope": scope,
+                        "lab_id": lab_id,
+                        "keywords": keywords,
+                        "total": page.total,
+                        "returned_count": len(rows),
+                        "returned_quantity": returned_quantity,
+                        "has_more": has_more,
+                        "summary": summary,
+                        "equipments": rows,
+                    },
                     ensure_ascii=False,
                 )
 

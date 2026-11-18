@@ -124,6 +124,8 @@ flowchart LR
 
 预约记录工具支持 `created_date`，按记录创建时间筛选指定提交日期，再统计总数及分页。返回值区分 `create_time`（提交时间）与 `date`（预约使用日期），并包含筛选条件、`total`、`returned_count` 和 `has_more`；目前最多返回第一页的 10 条，不提供工具翻页参数。
 
+设备工具 `list_lab_equipments` 的 `lab_id` 可省略，直接复用现有设备服务按名称跨全部实验室查询，无须先枚举开放实验室；指定正整数 ID 时只查询该实验室。查询范围与现有登录用户可用的设备列表接口一致，也包含关闭实验室的登记，不表示这些资源可以预约。返回 `scope/lab_id/keywords` 回显范围，`total` 表示匹配登记条数，`returned_count` 表示本页条数，`returned_quantity` 仅合计本页记录中的 quantity；`has_more=true` 时不能将本页当作完整库存。`summary` 由程序按实际结果生成范围、条数和台数说明，明确登记数量不是时段可预约容量。
+
 预约工具只创建待确认单，不创建真实预约。确认凭证通过 ToolMessage artifact 发送给页面卡片，不进入模型消息正文；用户点击按钮后通过独立接口确认或取消。历史会话目前只恢复文本，不恢复卡片、工具过程或本地操作提示。
 
 `POST /api/ai/chat/stream` 通过 SSE 返回以下 JSON 事件：
