@@ -1,5 +1,3 @@
-from tkinter import N
-
 from pydantic import BaseModel, ConfigDict
 
 

@@ -27,6 +27,7 @@ AI 先生成服务端待确认单，用户在页面确认后才创建正式预�
 | Agent | LangGraph、LangChain OpenAI 集成、工具调用 |
 | 知识库 | Chroma、Sentence Transformers、`BAAI/bge-small-zh-v1.5` |
 | 展示 | SSE、Marked、DOMPurify |
+| 本地容器部署 | Docker Compose、Nginx、MySQL 8.4 |
 
 后端依赖见 [requirements.txt](backend/requirements.txt)，前端依赖及锁定结果见 [package.json](frontend/package.json) 和 [package-lock.json](frontend/package-lock.json)。
 
@@ -36,12 +37,16 @@ AI 先生成服务端待确认单，用户在页面确认后才创建正式预�
 lab-agent/
 ├── README.md
 ├── .gitignore
+├── .env.example           # Compose 的 MySQL 密码示例
+├── compose.yaml
 ├── docs/
 │   ├── ARCHITECTURE.md
+│   ├── DOCKER.md
 │   ├── RAG.md
 │   └── TROUBLESHOOTING.md
 ├── backend/
 │   ├── .env.example
+│   ├── Dockerfile
 │   ├── requirements.txt
 │   ├── app/
 │   │   ├── api/           # HTTP 接口
@@ -52,6 +57,8 @@ lab-agent/
 │   └── data/kb/           # 纳入版本管理的知识资料
 └── frontend/
     ├── .env.example
+    ├── Dockerfile
+    ├── nginx.conf
     └── src/
         ├── api/
         ├── components/
@@ -63,7 +70,18 @@ lab-agent/
 
 运行时生成的 `backend/data/chroma/`、`backend/uploads/` 以及本地环境配置不随仓库提交。
 
-## 本地运行
+## 用 Docker 运行
+
+Docker Compose 会启动 Vue/Nginx 前端、FastAPI 后端和 MySQL。首次运行时，按[部署指南](docs/DOCKER.md#首次启动)配置根目录 `.env`、`backend/.env` 和模型网关，再在仓库根目录执行：
+
+```powershell
+docker compose up -d --build
+docker compose ps
+```
+
+打开 [Docker 版页面](http://127.0.0.1:8080)。Docker MySQL 首次启动是空库，可以注册新账号，也可以按[旧数据迁移步骤](docs/DOCKER.md#迁移已有数据和图片)导入原来的账号、预约、聊天和上传文件。
+
+## 本地开发
 
 以下命令使用 Windows PowerShell，均注明执行位置。首次克隆时按示例创建环境文件；已有环境文件时保留原文件，核对配置项即可。
 
@@ -103,7 +121,7 @@ Copy-Item .env.example .env
 
 | 变量 | 含义 |
 | --- | --- |
-| `Database_URL` | MySQL 连接地址；账号、密码和库名与本机配置一致 |
+| `DATABASE_URL` | MySQL 连接地址；账号、密码和库名与本机配置一致 |
 | `JWT_SECRET_KEY` | 自己生成的随机密钥 |
 | `JWT_EXPIRE_HOURS` | 登录凭证有效小时数 |
 | `JWT_ALGORITHM` | 默认 `HS256` |
@@ -170,7 +188,7 @@ npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 3. 管理员审核，学生查看结果。
 4. 在 AI 助手中询问“有哪些开放的实验室？”“查询我的预约记录”，查看工具步骤和真实结果。
 5. 提供具体资源、日期和时段，核对 AI 生成的确认卡片，点击确认后在预约列表核对。
-6. 询问知识库规则；修改对应 Markdown 并保存，再次查询，检查工具预览是否使用新内容。
+6. 询问知识库规则。修改对应 Markdown 后再查询，检查工具预览是否使用新内容。Docker 模式下先执行 `docker compose up -d --build backend`，把新文件放进镜像。
 7. 刷新聊天页面或重新登录同一账号，选择旧会话继续聊天。历史会话目前只恢复文字，不恢复预约确认卡片。
 
 AI 相对日期按后端服务器的本地日期解释；日期格式使用 `YYYY-MM-DD`，时段使用 `HH:mm`。
@@ -218,11 +236,12 @@ npm run build
 - 取消接口与知识库统一为仅允许本人自行取消待审核记录；已通过的预约需联系管理员处理。
 - 日期和时间使用字符串，依赖统一格式，格式校验仍需完善。
 - RAG 已支持字符切片、片段增量同步、来源编号、每轮自动检索和 25 条题目的开发评测；尚未实现按标题或段落切分、混合检索及独立测试集验证。自动检索不保证最终答案零幻觉。
-- 已提供会话、RAG、Agent 工具及前端回归测试；CI、Docker 部署配置和数据库迁移尚未实现。
-- 当前前端配置用于 Vite 本地开发；静态生产部署需要配置 API、`/uploads` 代理和 History 路由回退。
+- 已提供会话、RAG、Agent 工具及前端回归测试。后续计划包括 CI 和数据库结构迁移工具。
+- Compose 用于本机演示，应用端口绑定到回环地址。模型服务在 Docker Compose 之外运行，默认使用宿主机的兼容网关。
 
 ## 更多说明
 
+- [Docker 部署、数据迁移与排错](docs/DOCKER.md)
 - [系统架构与权限](docs/ARCHITECTURE.md)
 - [RAG 设计与资料更新](docs/RAG.md)
 - [RAG 评测与验收记录](docs/RAG_EVAL.md)

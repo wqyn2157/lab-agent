@@ -2,6 +2,10 @@
 
 基于 Vue 3、Vite 和 Element Plus 的实验室预约界面。完整的数据库、后端和账号初始化步骤见[根目录 README](../README.md)。
 
+## Docker 运行
+
+在仓库根目录执行 `docker compose up -d --build`，访问 [http://127.0.0.1:8080](http://127.0.0.1:8080)。[Dockerfile](Dockerfile) 用 Node 打包 Vue，再把 `dist/` 放入 Nginx 镜像。Compose 构建时前端使用相对接口地址，[nginx.conf](nginx.conf) 把 `/api/` 和 `/uploads/` 转发到 `backend:8000`，也负责 Vue 路由的刷新回退和聊天流式转发。[完整部署步骤](../docs/DOCKER.md)
+
 ## 本地开发
 
 Node.js 版本要求为 `^22.18.0 || >=24.12.0`。在本目录执行：
@@ -46,6 +50,6 @@ npm run build
 npm run preview
 ```
 
-构建输出位于 `dist/`。构建时应提供正确的 `VITE_API_BASE_URL`；本地 `.env.development` 不会自动成为生产模式配置。`vite.config.js` 中的开发代理不等于静态站点的生产代理，发布时需另行配置 API、`/uploads` 和 History 路由回退。
+构建输出位于 `dist/`。Vite 开发环境从 `.env.development` 读取 `VITE_API_BASE_URL`，Docker 版使用同源的相对地址。自行部署静态产物时，按目标环境配置 API 地址或同源代理，并提供 `/uploads/` 代理和 Vue 路由回退。
 
 `preview` 仅用于检查构建产物。其默认端口不在当前后端 CORS 允许列表中，完整联调需相应调整源配置或使用同源代理。

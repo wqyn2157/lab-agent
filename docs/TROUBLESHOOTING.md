@@ -2,7 +2,7 @@
 
 [返回项目首页](../README.md)
 
-本文记录当前实现相关的故障现象、处理位置和手动检查方法。会话及前端自动化测试的运行命令见根目录 README。
+本文记录当前实现相关的故障现象、处理位置和手动检查方法。Docker 版的端口、日志和数据卷问题见[部署指南](DOCKER.md#验收和排错)。会话及前端自动化测试的运行命令见根目录 README。
 
 ## 启动和环境配置
 
@@ -50,7 +50,7 @@ db.rollback()
 | 设备属于另一实验室 | 拒绝 |
 | 管理员提交预约 | 业务错误，只有学生可以提交 |
 
-当前仍是查询后写入，这些检查不代表并发抢占已经得到保障。
+上述用例只验证时间区间规则。并发提交需要另行验证服务端加锁及幂等行为。
 
 ## 知识库预热报 TypeError 或方法不存在
 
@@ -67,7 +67,7 @@ db.rollback()
 
 验证顺序：
 
-1. 修改一条知识库规则，保存。
+1. 修改一条知识库规则，保存。Docker 模式下运行 `docker compose up -d --build backend`，使容器读到新资料。
 2. 发起会调用知识库的新问题，检查工具输出是否包含新文本。
 3. 新文本已召回但最终回答仍旧：点击“新建会话”排除旧上下文影响后再试；刷新页面会恢复历史，不会清空聊天记录。
 4. 工具没有被调用：检查提示词、工具说明及模型返回的调用轨迹。
@@ -115,7 +115,7 @@ assistant.steps.push(`输出结果：${evt.preview}`)
 
 ```powershell
 git status --short --untracked-files=all
-git check-ignore backend/.env frontend/.env.development backend/data/chroma/chroma.sqlite3
+git check-ignore .env backend/.env frontend/.env.development backend/data/chroma/chroma.sqlite3
 ```
 
 阶段性添加后，再核对 `git diff --cached --stat` 与暂存文件内容。忽略规则不会自动移除已经被跟踪的文件，也不会清除已有提交中的数据；当前新仓库应从首次提交就保留这条边界。
