@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from app.common.exceptions import BusinessException
 from app.common.response import PageResponse
+from app.config import LAB_TIME_ZONE
 from app.database import SessionLocal
 from app.models.equipment import Equipment
 from app.models.lab import Lab
@@ -31,7 +32,9 @@ def get_reservation_page_list(
         query = query.filter(Reservation.status == status)
     if created_date is not None:
         try:
-            day_start = datetime.strptime(created_date, "%Y-%m-%d")
+            day_start = datetime.strptime(created_date, "%Y-%m-%d").replace(
+                tzinfo=LAB_TIME_ZONE
+            )
         except ValueError as exc:
             raise BusinessException(
                 message="提交日期格式应为 YYYY-MM-DD",
@@ -40,9 +43,10 @@ def get_reservation_page_list(
 
         day_end = day_start + timedelta(days=1)
 
+        # create_time 使用后端进程本地时间存储，查询边界需转换到同一时区。
         query = query.filter(
-            Reservation.create_time >= day_start,
-            Reservation.create_time < day_end,
+            Reservation.create_time >= day_start.astimezone().replace(tzinfo=None),
+            Reservation.create_time < day_end.astimezone().replace(tzinfo=None),
         )
     total = query.count()
     items = (
@@ -76,7 +80,7 @@ def validate_reservation(
             message="只有学生可以提交预约",
             code=403,
         )
-    now = datetime.now()
+    now = datetime.now(LAB_TIME_ZONE)
     current_date = now.strftime("%Y-%m-%d")
     current_time = now.strftime("%H:%M")
     if data.date < current_date:
@@ -197,7 +201,7 @@ def expire_pending_reservations():
     """批量取消过期的预约订单"""
     db = SessionLocal()
     try:
-        now = datetime.now()
+        now = datetime.now(LAB_TIME_ZONE)
         today = now.strftime("%Y-%m-%d")
         time = now.strftime("%H:%M")
         items = db.query(Reservation).filter(Reservation.status == 0).all()

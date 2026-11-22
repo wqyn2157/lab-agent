@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends
 
 from app.common.response import Response
+from app.config import LAB_TIME_ZONE
 from app.database import get_db
 from app.dependencies.auth import get_current_admin, get_current_user
 from app.models.user import User
@@ -81,7 +82,7 @@ def create_reservation_draft(
             "end_time": draft.end_time,
             "remark": draft.remark,
             "status": draft.status,
-            "expires_at": draft.expires_at,
+            "expires_at": draft.expires_at.astimezone(LAB_TIME_ZONE),
             "confirmation_token": confirmation_token,
         },
     )

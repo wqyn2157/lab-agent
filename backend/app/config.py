@@ -1,8 +1,11 @@
+from datetime import timedelta, timezone
+
 from annotated_types import T
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # 后端项目的根路径
+LAB_TIME_ZONE = timezone(timedelta(hours=8))
 
 
 class Settings(BaseSettings):

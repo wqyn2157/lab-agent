@@ -12,6 +12,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 
 from app.common.exceptions import BusinessException
+from app.config import LAB_TIME_ZONE
 from app.database import Base
 from app.models.chat_message import ChatMessage
 from app.models.conversation import Conversation
@@ -20,6 +21,11 @@ from app.models.lab import Lab
 from app.models.reservation import Reservation
 from app.models.user import User
 from app.services import agent_tools, conversation_service
+
+
+def stored_time(year, month, day, *time):
+    beijing_time = datetime(year, month, day, *time, tzinfo=LAB_TIME_ZONE)
+    return beijing_time.astimezone().replace(tzinfo=None)
 
 
 class AgentToolSessionTests(unittest.TestCase):
@@ -172,7 +178,7 @@ class AgentToolSessionTests(unittest.TestCase):
     def test_reservation_query_exposes_creation_time_and_record_id(self):
         with self.factory() as db:
             reservation = db.query(Reservation).filter(Reservation.user_id == self.owner_id).one()
-            reservation.create_time = datetime(2026, 11, 16, 23, 55)
+            reservation.create_time = stored_time(2026, 11, 16, 23, 55)
             reservation_id = reservation.id
             db.commit()
         with self.factory() as stream_db:
@@ -181,7 +187,10 @@ class AgentToolSessionTests(unittest.TestCase):
             result = json.loads(tools["get_reservation_page_list"].invoke({}))
         row = result["reservations"][0]
         self.assertEqual(row["id"], reservation_id)
-        self.assertEqual(datetime.fromisoformat(row["create_time"]), datetime(2026, 11, 16, 23, 55))
+        self.assertEqual(
+            datetime.fromisoformat(row["create_time"]),
+            datetime(2026, 11, 16, 23, 55, tzinfo=LAB_TIME_ZONE),
+        )
         self.assertEqual(row["date"], "2099-01-01")
 
     def test_disabled_or_missing_user_cannot_query_reservations(self):
@@ -197,19 +206,19 @@ class AgentToolSessionTests(unittest.TestCase):
     def test_created_date_filters_before_count_and_pagination(self):
         with self.factory() as db:
             original = db.query(Reservation).filter(Reservation.user_id == self.owner_id).one()
-            original.create_time = datetime(2026, 11, 16)
+            original.create_time = stored_time(2026, 11, 16)
             other = db.query(Reservation).filter(Reservation.user_id == self.other_id).one()
-            other.create_time = datetime(2026, 11, 16, 12)
+            other.create_time = stored_time(2026, 11, 16, 12)
             for created, remark, status in [
-                (datetime(2026, 11, 15, 23, 59, 59, 999999), "before", 0),
-                (datetime(2026, 11, 16, 23, 59, 59, 999999), "last-microsecond", 1),
-                (datetime(2026, 11, 17), "next-midnight", 0),
-            ] + [(datetime(2026, 11, 17, 12, minute), "newer", 0) for minute in range(12)]:
+                (stored_time(2026, 11, 15, 23, 59, 59, 999999), "before", 0),
+                (stored_time(2026, 11, 16, 23, 59, 59, 999999), "last-microsecond", 1),
+                (stored_time(2026, 11, 17), "next-midnight", 0),
+            ] + [(stored_time(2026, 11, 17, 12, minute), "newer", 0) for minute in range(12)]:
                 db.add(Reservation(user_id=self.owner_id, lab_id=self.lab_id, equipment_id=None, date="2099-01-01", start_time="09:00", end_time="10:00", remark=remark, status=status, create_time=created))
             db.commit()
             user = db.get(User, self.owner_id)
             unfiltered = agent_tools.reservation_service.get_reservation_page_list(db, user, 1, 10, None, None)
-            self.assertTrue(all(row.create_time.date().isoformat() == "2026-11-17" for row in unfiltered.list))
+            self.assertTrue(all(row.create_time.astimezone(LAB_TIME_ZONE).date().isoformat() == "2026-11-17" for row in unfiltered.list))
             first = agent_tools.reservation_service.get_reservation_page_list(db, user, 1, 1, None, self.other_id, created_date="2026-11-16")
             second = agent_tools.reservation_service.get_reservation_page_list(db, user, 2, 1, None, None, created_date="2026-11-16")
             self.assertEqual(first.total, 2)
@@ -233,11 +242,11 @@ class AgentToolSessionTests(unittest.TestCase):
     def test_tool_created_date_finds_older_submission_and_preserves_status(self):
         with self.factory() as db:
             old = db.query(Reservation).filter(Reservation.user_id == self.owner_id).one()
-            old.create_time = datetime(2026, 11, 16, 23, 55)
+            old.create_time = stored_time(2026, 11, 16, 23, 55)
             old.status = 3
             old_id = old.id
             for minute in range(12):
-                db.add(Reservation(user_id=self.owner_id, lab_id=self.lab_id, equipment_id=None, date="2099-01-01", start_time="09:00", end_time="10:00", remark="newer", status=0, create_time=datetime(2026, 11, 17, 12, minute)))
+                db.add(Reservation(user_id=self.owner_id, lab_id=self.lab_id, equipment_id=None, date="2099-01-01", start_time="09:00", end_time="10:00", remark="newer", status=0, create_time=stored_time(2026, 11, 17, 12, minute)))
             db.commit()
         with self.factory() as stream_db:
             tools = {tool.name: tool for tool in agent_tools.build_tools(stream_db, stream_db.get(User, self.owner_id))}
@@ -260,7 +269,7 @@ class AgentToolSessionTests(unittest.TestCase):
     def test_tool_created_date_reports_remaining_records(self):
         with self.factory() as db:
             for minute in range(12):
-                db.add(Reservation(user_id=self.owner_id, lab_id=self.lab_id, equipment_id=None, date="2099-01-01", start_time="09:00", end_time="10:00", remark="same-submission-day", status=0, create_time=datetime(2026, 11, 16, 12, minute)))
+                db.add(Reservation(user_id=self.owner_id, lab_id=self.lab_id, equipment_id=None, date="2099-01-01", start_time="09:00", end_time="10:00", remark="same-submission-day", status=0, create_time=stored_time(2026, 11, 16, 12, minute)))
             db.commit()
         with self.factory() as stream_db:
             tool = next(tool for tool in agent_tools.build_tools(stream_db, stream_db.get(User, self.owner_id)) if tool.name == "get_reservation_page_list")

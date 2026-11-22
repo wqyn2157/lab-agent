@@ -1,3 +1,4 @@
+from datetime import datetime
 import traceback
 from typing import Any
 from uuid import uuid4
@@ -9,7 +10,7 @@ from langgraph.graph import START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 from sqlalchemy.orm import Session
 from app.common.exceptions import BusinessException
-from app.config import settings
+from app.config import LAB_TIME_ZONE, settings
 from app.models.user import User
 from app.services import agent_tools
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage
@@ -165,7 +166,9 @@ async def stream_agent(
     try:
         reply_parts = []
         agent = build_agent(db, current_user)
-        inputs = {"messages": [SystemMessage(content=SYSTEM_PROMPT), *history]}
+        today = datetime.now(LAB_TIME_ZONE).date().isoformat()
+        prompt = SystemMessage(content=f"{SYSTEM_PROMPT}\n当前北京时间日期：{today}")
+        inputs = {"messages": [prompt, *history]}
 
         yield {"type": "status", "message": "正在思考..."}
 

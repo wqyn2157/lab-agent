@@ -3,6 +3,7 @@ import json
 from sqlalchemy.orm import Session
 from langchain_core.tools import tool
 import traceback
+from app.config import LAB_TIME_ZONE
 from app.database import SessionLocal
 from app.schemas.reservation import ReservationCreateRequest
 from app.services import reservation_draft_service
@@ -171,7 +172,7 @@ def build_tools(db: Session, current_user: User):
                         "end_time": item.end_time,
                         "remark": item.remark,
                         "status": item.status,
-                        "create_time": item.create_time.isoformat(),
+                        "create_time": item.create_time.astimezone(LAB_TIME_ZONE).isoformat(),
                     }
                     for item in page.list
                 ]
@@ -248,7 +249,7 @@ def build_tools(db: Session, current_user: User):
                     "end_time": draft.end_time,
                     "remark": draft.remark,
                     "status": draft.status,
-                    "expires_at": draft.expires_at.isoformat(),
+                    "expires_at": draft.expires_at.astimezone(LAB_TIME_ZONE).isoformat(),
                 }
 
                 card_data = {
@@ -278,9 +279,8 @@ def build_tools(db: Session, current_user: User):
 
     @tool
     def get_today() -> str:
-        """获取服务器当前的日期"""
-        now = datetime.now()
-        return now.strftime("%Y-%m-%d")
+        """获取北京时间的当前日期。"""
+        return datetime.now(LAB_TIME_ZONE).date().isoformat()
 
     return [
         search_lab_docs,
